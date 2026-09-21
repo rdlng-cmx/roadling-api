@@ -1,4 +1,4 @@
-import { ServerModule } from "../interfaces/ServerComponent.mts"
+import { ServerModule } from "../classes/ServerComponent.mts"
 
 export default <const N extends string, T>(...args: ConstructorParameters<typeof ServerModule<N, T>>) => {
     const [name, init] = args

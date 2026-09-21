@@ -1,6 +1,5 @@
 import { createClient, RedisClientOptions, RedisClientType } from 'redis';
-import { ServerModule } from '../interfaces/ServerComponent.mts';
-import generateModule from '../helpers/generateModule.mts';
+import generateModule from '../helpers/generateComponent.mts';
 import grabEnv from '../helpers/grabEnv.mts';
 
 const name = "redis" as const
@@ -18,8 +17,3 @@ const component = generateModule<typeof name, RedisClientType>(name, async () =>
     return redis
 })
 export default component
-declare module 'koa' {
-    interface DefaultContext {
-        [component.name]: Awaited<ReturnType<typeof component.init>>
-    }
-}

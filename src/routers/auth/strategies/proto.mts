@@ -6,19 +6,21 @@ const strategy: Strategy = {
     methods: {
         "post:login": async (ctx, next) => {
             const { handle } = ctx.request.body as { [key: string]: string }
+            const { protoAuth } = ctx.components
+
             if (handle) {
                 const url = ctx.request.origin
                 console.log(url)
-                const authUrl = await protoAuth.authorize(handle, { state: url, scope: 'atproto' })
+                const authUrl = await protoAuth!.authorize(handle, { state: url, scope: 'atproto' })
                 ctx.body = { redirectUrl: authUrl.toString() }
             }
             next();
         },
         "get:callback": async (ctx, next) => {
             const params = new URLSearchParams(ctx.querystring)
-            const protoAuth: NodeOAuthClient = ctx.protoAuth
+            const { protoAuth } = ctx.components
             console.log()
-            const { session, state } = await protoAuth.callback(params);
+            const { session, state } = await protoAuth!.callback(params);
             ctx.cookies.set("did", session.did, {
                 httpOnly: false,
                 secure: false,

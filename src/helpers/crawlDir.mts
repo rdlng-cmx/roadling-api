@@ -8,7 +8,7 @@ export default (dir: string, callback: (arg?: any) => any) => async function () 
     const routersPath = dir;
     const routerFiles = fs.readdirSync(routersPath).map(content => {
         if (content.endsWith(extension)) {
-            return content
+            return !content.includes('index') ? content : undefined
         }
         const folder = fs.readdirSync(routersPath + "/" + content)
         if (folder.some(file => file === ("index" + extension))) return content + "/index" + extension
@@ -16,7 +16,7 @@ export default (dir: string, callback: (arg?: any) => any) => async function () 
     }).filter(Boolean) as string[];
     for (const file of routerFiles) {
         const filePath = path.join(routersPath, file);
-        console.log("   found " + filePath)
+        console.log("   found " + file)
         const stuff = ((await import(pathToFileURL(filePath).href)).default)
         callback(stuff)
     }
