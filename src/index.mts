@@ -21,9 +21,11 @@ const setups = [components, routes, database]
 for (const setup of setups) {
     console.log("𖨆 setting up " + setup.name)
     await setup.setup(app)
-    await wait(500)
+    //await wait(500)
 }
     
 
 
 app.listen(3000)
+console.log(`𖨆 we're done here.
+    port: 3000`)

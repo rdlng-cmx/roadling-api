@@ -1,0 +1,16 @@
+{
+    "stroke": "white",
+    "girth": 1,
+    "height": 150,
+    "format": "svg",
+    "jitter": {
+        "baseFrequency": 0.02,
+        "numOctaves": 4,
+        "seed": 227,
+        "scale": 3
+    },
+    "opens": "sometimes",
+    "vowels": "sometimes",
+    "crisp": true,
+    "bang": false
+}

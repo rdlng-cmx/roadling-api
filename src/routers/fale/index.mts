@@ -4,21 +4,46 @@ import { createSVGWindow } from 'svgdom'
 import { SVG, registerWindow } from '@svgdotjs/svg.js'
 
 import '@svgdotjs/svg.panzoom.js'
+import '@svgdotjs/svg.filter.js'
 import { G } from "@svgdotjs/svg.js";
 import { parse, structure, validateSyllable } from "./structure.mts";
 import { Element } from "@svgdotjs/svg.js";
 import { Svg } from "@svgdotjs/svg.js";
-import { Fale, FaleOptions } from "./fale.ts";
+import { Character, Dan, Fale, FaleOptions, Moja } from "./fale.ts";
+import Defaults from './defaults.json' with {type: 'json'}
 import sharp from "sharp";
 
 const window = createSVGWindow()
 const document = window.document
 
 registerWindow(window, document)
-const fale = read(import.meta.dirname + "/svg/fale.svg").replaceAll("stroke:#000000;", "")
+const fale = read(import.meta.dirname + "/svg/fale.svg")
+    .replaceAll("stroke:#000000;", "")
+    .replaceAll("stroke-width:1;", "")
+    .replaceAll("stroke-linecap:round;", "")
+    .replaceAll("stroke-linejoin:round", "")
 const canvas = SVG().group()
-Fale.glyphs = canvas.svg(fale)
-
+Character.glyphs = canvas.svg(fale)
+type Sometimes = boolean | "sometimes"
+interface Body {
+    syllables: string[],
+    options: {
+        stroke?: string,
+        opens?: Sometimes,
+        vowels?: Sometimes,
+        crisp?: boolean,
+        bang?: boolean
+        jitter?: {
+            baseFrequency: number
+            numOctaves: number
+            seed: number
+            scale: number
+        },
+        girth?: number;
+        height?: number;
+        format?: "svg" | "png"
+    }
+}
 class Line implements Iterator<number | null> {
     private at = 0
     private _done: boolean = false
@@ -51,22 +76,32 @@ class Line implements Iterator<number | null> {
 }
 class Text implements Iterator<[number, number]> {
     public currentLine: Line | null = null
-    constructor(private svg: Svg, private stroke: string = "#000", private spacing: number = 1.5, private margin: number = Infinity) {
+    constructor(private svg: Svg, private options: {
+        stroke?: string
+        girth?: number
+        margin?: number
+    }) {
         this.group = this.svg.group().stroke({
-            color: this.stroke,
-            width: 1,
+            color: options.stroke ?? "#fff",
+            width: options.girth ?? 1,
             linecap: "round",
             linejoin: "round"
         })
     }
+    dan = (num: string) => {
+        return new Dan(this.group, num)
+    }
     fale = (syllable: string, options?: FaleOptions) => {
         return new Fale(this.group, syllable, options)
     }
-    next(fale: Fale): IteratorResult<[number, number]> {
-        if (!this.currentLine || this.currentLine.done) this.currentLine = new Line(this.spacing, this.margin)
-        fale.syllable.move(this._x, 0)
+    moja = (moja: string) => {
+        return new Moja(this.group, moja)
+    }
+    next(character: Character): IteratorResult<[number, number]> {
+        if (!this.currentLine || this.currentLine.done) this.currentLine = new Line((this.options.girth ?? 1) + .5)
+        character.character.move(this._x, 0)
 
-        const result = this.currentLine.next(fale.syllable)
+        const result = this.currentLine.next(character.character)
 
 
         this._x = result.value
@@ -92,7 +127,9 @@ const router = new Router()
     .prefix('/fale')
     .get('/', async (ctx, next) => {
         const content = SVG()
-        const text = new Text(content)
+        const text = new Text(content, {
+            girth: 0.5
+        })
         const { get } = ctx.query
         console.log(get)
         if (Array.isArray(get)) return;
@@ -119,36 +156,61 @@ const router = new Router()
     })
     .post('/', async (ctx, next) => {
         const content = SVG()
-        interface Body {
-            syllables: string[],
-            options: {
-    stroke?: string,
-    omitOpens?: boolean | "sometimes",
-}
-        }
+        const defaults = Defaults as unknown as Required<Body["options"]>
         const { syllables, options } = ctx.request.body as Body
-        const { stroke, omitOpens } = options
-        const text = new Text(content, stroke)
+        const {
+            bang = defaults.bang,
+            stroke = defaults.stroke,
+            girth = defaults.girth,
+            opens = defaults.opens,
+            format = defaults.format,
+            height = defaults.height,
+            jitter = null,
+            vowels = defaults.vowels,
+            crisp = defaults.crisp } = options ?? defaults
+        const text = new Text(content, {
+            girth,
+            stroke
+        })
         let stress = Infinity
         const faleOptions: FaleOptions = {
-            omitOpens: omitOpens === true || (omitOpens === "sometimes" && syllables.length > 1)
+            girth,
+            opens: opens === true || (opens === "sometimes" && syllables.length > 1),
+            vowel: (vowels === "sometimes" ? undefined : vowels) ?? undefined
         }
+        if (bang) text.next(text.moja("!bang-onset"))
         for (const [index, syllable] of syllables.entries()) {
-            
-            faleOptions.flip = index === syllables.length - 1|| (index > stress && !syllable.includes('*'))
-            const fale = text.fale(syllable, faleOptions)
-            if (fale.attributes.has("invalid")) continue;
-            if (fale.attributes.has("stress")) stress = index
-            text.next(fale)
+            const characterClass: keyof Text = Fale.validate(syllable) ? "fale" : Moja.validate(syllable) ? "moja" : "dan"
+            if (characterClass === "fale") {
+                faleOptions.flip = index === syllables.length - 1 || (index > stress && !syllable.includes('*'))
+                const fale = text.fale(syllable, faleOptions)
+                if (fale.attributes.has("invalid")) continue;
+                if (fale.attributes.has("stress")) stress = index
+                text.next(fale)
+            }
+            if (characterClass === "moja") {
+                text.next(text.moja(syllable))
+            }
+            if (characterClass === "dan") {
+                console.log(syllable)
+                text.next(text.dan(syllable))
+            }
         }
-        const { x, y, width, height } = content.group().add(text.group).bbox()
-        content.viewbox({ x: x - 0.5, y: y - 0.5, width: width + 2, height: height + 1 })
-        content.attr("height", 150)
+        if (bang) text.next(text.moja("!bang"))
+        if (jitter) content.filterWith(add => {
+            const { baseFrequency = defaults.jitter.baseFrequency, numOctaves = defaults.jitter.numOctaves, seed = defaults.jitter.numOctaves, scale = defaults.jitter.scale } = jitter
+            const turbulence = add.turbulence(baseFrequency, numOctaves, seed, 'noStitch', 'turbulence')
+            add.displacementMap(add.$source, turbulence, scale, 'R', 'G')
+        })
+        const { x, y, width: contentWidth, height: contentHeight } = content.group().add(text.group).bbox()
+        content.viewbox({ x: x - girth / 2, y: y - girth / 2, width: contentWidth + girth * 2, height: contentHeight + girth })
+        content.attr("height", height)
         content.attr("preserveAspectRatio", "xMinYMin meet")
-        const svgToPng = await sharp(Buffer.from(content.svg()))
-        .png().toBuffer()
-        ctx.body = svgToPng
-        ctx.set("Content-Type", "image/png")
+        if (crisp) content.attr("shape-rendering", "crispEdges")
+        const file = format === "svg" ? content.svg() : await sharp(Buffer.from(content.svg()))
+        [format]().toBuffer()
+        ctx.body = file
+        ctx.set("Content-Type", "image/" + format)
         await next()
     })
 

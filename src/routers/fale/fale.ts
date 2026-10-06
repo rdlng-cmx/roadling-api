@@ -2,14 +2,16 @@ import { Element } from "@svgdotjs/svg.js";
 import { G } from "@svgdotjs/svg.js";
 
 type Consonant = typeof Fale.consonants[number]
-type Glide = typeof Fale.glides[number]
+type Diacritic = typeof Fale.diacritics[number]
 type Vowel = typeof Fale.vowels[number]
 type Mark = typeof Fale.marks[number]
 type Punctuation = typeof Fale.punctuation[number]
 
 export interface FaleOptions {
-    omitOpens?: boolean,
-    flip?: boolean
+    opens?: boolean,
+    vowel?: boolean
+    flip?: boolean,
+    girth?: number,
 }
 interface GlyphData<N extends string> {
     glyph: N | undefined,
@@ -25,21 +27,33 @@ interface ConsonantData extends GlyphData<Consonant> {
         "hook-bottom"?: string
     }
 }
-type ConsonantExcept = Omit<ConsonantData, "glyph"|"alts"|"except"> & {use?: string, glyph: Consonant|"open"} 
+interface DiacriticData extends GlyphData<`diacritic-${Diacritic}`> {
+    space?: [number, number]
+}
+type ConsonantExcept = Omit<ConsonantData, "glyph" | "alts" | "except"> & { use?: string, glyph: Consonant | "open" }
 type FaleType<N extends string, T extends GlyphData<string> = GlyphData<N>> = Record<N, T>
 export interface FaleData {
     consonants: FaleType<Consonant, ConsonantData>
     vowels: FaleType<Vowel>
-    glides: FaleType<Glide, GlyphData<`glide-${Glide}`>>
+    diacritic: FaleType<Diacritic, DiacriticData>
     punctuation: FaleType<Punctuation>
 }
 type HasElement = { element: Element }
 type ConsonantGlyph = ConsonantData & HasElement
 type VowelGlyph = GlyphData<Vowel> & HasElement
-type GlideGlyph = GlyphData<"glide-y" | "glide-w"> & HasElement
-type SyllableAttribute = "closed" | "inflector" | "stress" | "invalid"
+type DiacriticGlyph = DiacriticData & HasElement
+type SyllableAttribute = "closed" | "inflector" | "stress" | "invalid" | "punctuation"
 
-export class Fale {
+export abstract class Character {
+    static glyphs: Element
+    public readonly character: G
+    public readonly prefix?: string
+    protected readonly grab = (glyph: string) => Character.glyphs.find(`#${this.prefix ? this.prefix + "-" : ""}${glyph}`)[0]?.clone().untransform().move(0, 0).addTo(this.character)
+    constructor(target: G) {
+        this.character = target.group()
+    }
+}
+export class Fale extends Character {
     static glyphs: Element
     static readonly data: FaleData = {
         consonants: {
@@ -141,6 +155,15 @@ export class Fale {
                             0,
                             0
                         ]
+                    },
+                    {
+                        glyph: "open",
+                        hook: "bottom",
+                        use: "r-open",
+                        extend: [
+                            0,
+                            0
+                        ]
                     }
                 ]
             },
@@ -204,8 +227,8 @@ export class Fale {
                 glyph: "s",
                 hook: true,
                 extend: [
-                    2.4,
-                    2.1
+                    2,
+                    2
                 ],
                 alts: {
                     open: "s-open"
@@ -280,14 +303,26 @@ export class Fale {
         },
         punctuation: {
             "open-bottom": { glyph: "open-bottom" },
-            "open-top": { glyph: "open-top" }
+            "open-top": { glyph: "open-top" },
         },
-        glides: {
+        diacritic: {
             w: {
-                glyph: "glide-w"
+                glyph: "diacritic-w",
             },
             y: {
-                glyph: "glide-y"
+                glyph: "diacritic-y",
+            },
+            "2": {
+                glyph: "diacritic-2",
+            },
+            "x": {
+                glyph: "diacritic-x",
+            },
+            "v": {
+                glyph: "diacritic-v"
+            },
+            "0": {
+                glyph: "diacritic-0"
             }
         },
         vowels: {
@@ -297,19 +332,27 @@ export class Fale {
             o: { glyph: "o" },
             u: { glyph: "u" }
         },
-        
+
     }
     static readonly validSyllables: { [key: string]: Set<SyllableAttribute> } = {
+        "!": new Set(["punctuation"]),
         ".CV": new Set([]),
+        ".CGV": new Set([]),
+        ".CVG": new Set([]),
         "-V": new Set(["inflector",]),
+        "-GV": new Set(["inflector",]),
+        "-VG": new Set(["inflector",]),
         "-VC": new Set(["inflector", "closed"]),
+        "-GVC": new Set(["inflector", "closed"]),
+        "-VGC": new Set(["inflector", "closed"]),
         "*CV": new Set(["stress",]),
         "*CGV": new Set(["stress",]),
         "*CVG": new Set(["stress",]),
         "*CVC": new Set(["stress", "closed"]),
         "*CGVC": new Set(["stress", "closed"]),
         "*CVGC": new Set(["stress", "closed"]),
-        "*CGVGC": new Set(["stress", "closed"]),
+        "*CGVG": new Set(["stress"]),
+        "*CGVGC": new Set(["stress", "closed"])
     }
     static readonly consonants = [
         "p", "b",
@@ -323,8 +366,8 @@ export class Fale {
         "dz", "dj",
         "r"
     ] as const;
-    static readonly glides = [
-        "y", "w"
+    static readonly diacritics = [
+        "y", "w", "2", "v", "0", "x"
     ] as const;
 
     static readonly vowels = [
@@ -332,7 +375,7 @@ export class Fale {
     ] as const;
 
     static readonly marks = [
-        ".", "*", "-"
+        ".", "*", "-",
     ] as const;
     static readonly punctuation = [
         "open-top",
@@ -342,30 +385,30 @@ export class Fale {
         "open-top-w",
         "open-bottom-w"
     ]
-    static readonly validate = (syllable: string) => new RegExp(`^(?<mark>${Fale.marks.map(mark => '\\' + mark).join("|")})(?<onset>${Fale.consonants.join("|")})?(?<glide1>${Fale.glides.join("|")})?(?<nucleus>${Fale.vowels.join("|")})(?<glide2>${Fale.glides.join("|")})?(?<coda>${Fale.consonants.join("|")})?$`).exec(syllable)
+    static readonly validate = (syllable: string) => new RegExp(`^(?<mark>${Fale.marks.map(mark => '\\' + mark).join("|")})(?<onset>${Fale.consonants.join("|")})?(?<diacritic1>${Fale.diacritics.join("|")})?(?<nucleus>${Fale.vowels.join("|")})(?<diacritic2>${Fale.diacritics.join("|")})?(?<coda>${Fale.consonants.join("|")})?$`).exec(syllable)
     static readonly parse = (syllable: string) => {
         const regex = Fale.validate(syllable)
         if (!regex?.groups) return "";
-        const { mark, onset, glide1, nucleus, glide2, coda } = regex?.groups
-        const realSyll = [mark, onset, glide1, nucleus, glide2, coda].filter(Boolean).join("|")
+        const { mark, onset, diacritic1, nucleus, diacritic2, coda } = regex?.groups
+        const realSyll = [mark, onset, diacritic1, nucleus, diacritic2, coda].filter(Boolean).join("|")
+        if (mark === "!") return "!"
         return realSyll
             .split("|")
             .map(char => {
+                if (Fale.diacritics.includes(char as Diacritic)) return "G"
                 if (Fale.marks.includes(char as Mark)) return char
                 if (Fale.consonants.includes(char as Consonant)) return "C"
                 if (Fale.vowels.includes(char as Vowel)) return "V"
-                if (Fale.glides.includes(char as Glide)) return "G"
                 else throw new Error()
             }).join("")
     }
     static readonly analyze = (syllable: string) => Fale.validSyllables[Fale.parse(syllable)] ?? new Set(["invalid"])
-    private readonly grab = (glyph: string) => Fale.glyphs.find("#" + glyph)[0]?.clone().untransform().move(0, 0).addTo(this.syllable)
     private readonly setData = (syllable: string) => {
-        const { onset, nucleus, coda, glide1, glide2 } = Fale.validate(syllable)?.groups! as { onset: Consonant, nucleus: Vowel, coda: Consonant, glide1: Glide, glide2: Glide }
-        this.glides = [glide1, glide2].map(glyph => {
+        const { onset, nucleus, coda, diacritic1, diacritic2 } = Fale.validate(syllable)?.groups! as { onset: Consonant, nucleus: Vowel, coda: Consonant, diacritic1: Diacritic, diacritic2: Diacritic }
+        this.diacritic = [diacritic1, diacritic2].map(glyph => {
             if (!glyph) return undefined;
-            return { element: this.grab("glide-"+glyph), ...Fale.data.glides[glyph] }
-        }) as [GlideGlyph | undefined, GlideGlyph | undefined]
+            return { element: this.grab("diacritic-" + glyph), ...Fale.data.diacritic[glyph] }
+        }) as [DiacriticGlyph | undefined, DiacriticGlyph | undefined]
         this.vowel = { element: this.grab(nucleus), ...Fale.data.vowels[nucleus] }
         this.consonants = [onset, coda].map(glyph => {
             if (!glyph) return undefined;
@@ -373,57 +416,63 @@ export class Fale {
         }) as [ConsonantGlyph | undefined, ConsonantGlyph | undefined]
     }
     private vowel!: VowelGlyph;
-    private glides: [ GlideGlyph | undefined, GlideGlyph | undefined ] = [,,]
+    private diacritic: [DiacriticGlyph | undefined, DiacriticGlyph | undefined] = [, ,]
     private consonants: [ConsonantGlyph | undefined, ConsonantGlyph | undefined] = [, ,]
     public get attributes() {
         return Fale.analyze(this._syllable)
     }
 
     get onset() { return this.consonants[0] }
-    get onsetGlyph() { return  this.onset!.element }
+    get onsetGlyph() { return this.onset!.element }
     set onsetGlyph(element: Element) { this.onset!.element = this.onset!.element.replace(element) }
 
     get coda() { return this.consonants[1] }
-    get codaGlyph() { return this.coda!.element}
+    get codaGlyph() { return this.coda!.element }
     set codaGlyph(element: Element) { this.coda!.element = this.coda!.element.replace(element) }
 
     get extension(): [number, number] { const [onset, coda] = this.consonants; return [onset?.extend?.[0] ?? 0, coda?.extend?.[1] ?? 0] }
-    public readonly syllable: G
+
 
     // constructor
     constructor(target: G, private _syllable: string, private options: FaleOptions = {
         flip: false,
-        omitOpens: true
+        opens: true,
+        girth: 1
     }) {
-        this.syllable = target.group()
-
+        super(target)
         const { attributes } = this
         if (attributes.has("invalid")) return;
+        const showVowel = options.vowel ?? (attributes.has("stress") || attributes.has("inflector"))
         this.setData(_syllable)
 
-        const { writeOpenInflector, writeClosedInflector, writeClosedSyllable, writeStressedOpenSyllable, writeOpenSyllable, writeVowel } = this
+        const { writeOpenInflector, writeClosedInflector, writeClosedSyllable, writeStressedOpenSyllable, writeOpenSyllable, writeVowel, writeDiacritics } = this
         if (attributes.has("inflector")) if (attributes.has("closed")) writeClosedInflector(); else;
         else if (attributes.has("closed")) writeClosedSyllable();
         else if (attributes.has("stress")) writeStressedOpenSyllable();
         else writeOpenSyllable();
         const [onset, coda] = this.consonants
 
+        if (onset?.element) writeDiacritics([onset.element, coda?.element]); else if (coda?.element) writeDiacritics([coda.element]);
         const head: Element = onset?.element ?? coda?.element ?? writeOpenInflector();
-        if (attributes.has("stress") || attributes.has("inflector")) writeVowel(head)
+        writeVowel(head, showVowel)
     }
 
     //writing methods
     private readonly writeOpenInflector = () => {
         const nullGlyph = this.grab("null")
         if (this.options.flip) nullGlyph.flip('x')
+        this.writeDiacritics([nullGlyph])
         return nullGlyph
     }
     private readonly writeClosedInflector = () => {
         const { hook, element } = this.coda!
-        const hookY = (hook === "top") ? "top" : "bottom"
-        const open = this.grab("open-" + hookY)
-        element.move(open.bbox().width, hookY === "top" ? 0 : open.bbox().height - element.bbox().height).flip('x')
-        this.writeExtension([open, element], hookY)
+        const y = (hook === "top") ? "top" : "bottom"
+        const [diacritic1] = this.diacritic
+        diacritic1?.element.remove()
+        let diacriticOpen = diacritic1 ? "-" + diacritic1.glyph : ""
+        const open = this.grab("open-" + y + diacriticOpen)
+        element.move(open.bbox().width, y === "top" ? 0 : open.bbox().height - element.bbox().height).flip('x')
+        this.writeExtension([open, element], y)
     }
     private readonly writeClosedSyllable = () => {
         const [onset, coda] = this.consonants
@@ -436,10 +485,24 @@ export class Fale {
         if (except?.use) this.onsetGlyph = this.grab(except.use)
 
         const goBy = except ?? onset
-        const hook: "top" | "bottom" | false = goBy.hook === true ? coda?.hook === true ? "top" : coda?.hook : goBy.hook === false ? false : goBy.hook
+        let hook: "top" | "bottom" | false = goBy.hook === true ? coda?.hook === true ? "top" : coda?.hook : goBy.hook === false ? false : goBy.hook
 
-        const hookAlt = "hook-" + hook as "hook-top" | "hook-bottom"
-        if (coda.alts?.[hookAlt]) this.codaGlyph = this.grab(coda.alts[hookAlt])
+        const conflict = typeof onset.hook === "string" && typeof coda.hook === "string" && onset.hook !== coda.hook
+        console.log(conflict)
+        if (conflict) {
+            const codaHookAlt = "hook-" + onset.hook as "hook-top" | "hook-bottom"
+            const onsetHookAlt = "hook-" + coda.hook as "hook-top" | "hook-bottom"
+            if (coda.alts?.[codaHookAlt]) {
+                this.codaGlyph = this.grab(coda.alts[codaHookAlt])
+                hook = onset.hook as "top" | "bottom"
+            }
+            else if (onset.alts?.[onsetHookAlt]) {
+                this.onsetGlyph = this.grab(onset.alts[onsetHookAlt])
+                hook = coda.hook as "top" | "bottom"
+            }
+        }
+
+
         this.codaGlyph.move(space, 0).flip('x')
 
         if (hook) {
@@ -449,50 +512,74 @@ export class Fale {
     }
 
     private readonly writeStressedOpenSyllable = () => {
-        if (this.options.omitOpens) return this.writeOpenSyllable(false);
+        if (this.options.opens) return this.writeOpenSyllable();
         const onset = this.consonants[0]!
         const { element, hook, except } = onset
         const exceptOpen = except?.find(data => data.glyph === "open")
         if (exceptOpen && exceptOpen.use) this.onsetGlyph = this.grab(exceptOpen.use)
         if (!hook) return;
         const y = (hook === true ? "bottom" : hook)
-        const [glide1, glide2] = this.glides
-        glide2?.element.remove()
-        let glideOpen = glide2 ? "-" + glide2.glyph : ""
-        const open = this.grab("open-" + y + glideOpen)
+        const [_, diacritic2] = this.diacritic
+        diacritic2?.element.remove()
+        let diacriticOpen = diacritic2 ? "-" + diacritic2.glyph : ""
+        const open = this.grab("open-" + y + diacriticOpen)
         open.move(element.bbox().width, hook === "top" ? 0 : element.bbox().height - open.bbox().height).flip('x')
-        glide1?.element.move(-1.5,-1.5)
         this.writeExtension([onset.element, open], y, exceptOpen?.extend ?? this.extension)
     }
-    private readonly writeOpenSyllable = (omitVowel: boolean = true) => {
-        if (omitVowel) this.vowel.element?.remove()
+    private readonly writeOpenSyllable = () => {
         const onset = this.consonants[0]!
         if (onset.alts?.open) this.onsetGlyph = this.grab(onset.alts.open)
         if (this.options.flip) this.onsetGlyph.flip('x')
     }
     private readonly writeExtension = (elements: [Element, Element], y: "top" | "bottom" = "top", extension: [number, number] = this.extension) => {
-        const { y: closingGlyphY, y2: closingGlyphY2 } = this.syllable.bbox()
+        const { y: closingGlyphY, y2: closingGlyphY2 } = this.character.bbox()
         const { x: closingGlyphX, width: closingWidth } = elements[1].bbox()
         const { x2: openingX2, width: openingWidth } = elements[0].bbox()
         const lineY = y === "bottom" ? closingGlyphY2 : closingGlyphY
         const calculate = (n: number, m: number) => n === 4 ? m : n * (m / 4)
-        this.syllable.line(openingX2 - calculate(extension[0], openingWidth), lineY, closingGlyphX + calculate(extension[1], closingWidth), lineY).stroke({
-            width: 1,
-            linecap: "round",
-            linejoin: "round"
-        })
+        this.character.line(openingX2 - calculate(extension[0], openingWidth), lineY, closingGlyphX + calculate(extension[1], closingWidth), lineY)
     }
-    private readonly writeVowel = (glyph: Element) => {
-        console.log(glyph)
-        console.log(this.vowel)
+    private readonly writeVowel = (glyph: Element, show: boolean) => {
+        if (!show) return this.vowel.element?.remove()
+        const { girth = 1 } = this.options
         const vowel = this.vowel.element
         if (!vowel) return;
         const { width: glyphWidth, x: glyphX, y: glyphY } = glyph.bbox()
         const { width: vowelWidth, height: vowelHeight } = vowel.bbox()
-        vowel.move(glyphX + glyphWidth / 2 - vowelWidth / 2, glyphY - 1.5 - vowelHeight)
+        vowel.move(glyphX + glyphWidth / 2 - vowelWidth / 2, glyphY - (girth + .5) - vowelHeight)
     }
-    private readonly writeGlides = (glyphs: [Element, Element]) => {
+    private readonly writeDiacritics = (glyphs: [Element, Element?]) => {
+        const [onset, coda = onset] = glyphs
+        const { x: onsetX, y: onsetY } = onset.bbox()
+        const { x2: codaX2, y: codaY } = coda.bbox()
+        const [diacritic1, diacritic2] = this.diacritic
+        const defaultSpace = [(this.options.girth ?? 1)/2,0]
+        const space1 = diacritic1?.space ?? defaultSpace
+        const space2 = diacritic2?.space ?? defaultSpace
+        diacritic1?.element.move(onsetX - space1[0] - diacritic1.element.bbox().width - (this.options.girth ?? 0), onsetY - space1[1])
+        diacritic2?.element.move(codaX2 + space2[0] + (this.options.girth ?? 0), codaY - space2[1]).flip('x')
+    }
+}
 
+export class Moja extends Character {
+    prefix = "moja"
+    static validate = (syllable: string) => /!(?<moja>.+)/.exec(syllable)
+    constructor(target: G, _moja: string) {
+        super(target)
+        const groups = Moja.validate(_moja)?.groups
+        if (!groups || !groups.moja) return; 
+        this.grab(groups.moja)
+    }
+}
+export class Dan extends Character {
+    prefix = "dan"
+    static validate = (syllable: string) => /#(?<dan>[1-7]+)/.exec(syllable)
+    constructor(target: G, _dan: string) {
+        super(target)
+        const groups = Dan.validate(_dan)?.groups
+        console.log(groups)
+        if (!groups || !groups.dan) return; 
+        this.grab(groups.dan)
     }
 }
 
