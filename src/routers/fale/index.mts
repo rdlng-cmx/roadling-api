@@ -32,7 +32,8 @@ interface Body {
         opens?: Sometimes,
         vowels?: Sometimes,
         crisp?: boolean,
-        bang?: boolean
+        bang?: boolean,
+        alts?: Record<string, string>,
         jitter?: {
             baseFrequency: number
             numOctaves: number
@@ -62,15 +63,15 @@ class Line implements Iterator<number | null> {
             word.y(this.height - word.bbox().height)
         }
     }
-    next(word: G): IteratorResult<number | null> {
+    next(character: Character): IteratorResult<number | null> {
         if (this.done) return { value: null, done: true }
         if (this.at > this.margin) {
             this._done = true
             return { value: null, done: true }
         }
-        this.words.push(word)
+        this.words.push(character.character)
         this.align()
-        this.at += word.bbox().width + this.spacing
+        this.at = character.character.bbox().x2 + this.spacing
         return { value: this.at, done: false }
     }
 }
@@ -99,9 +100,13 @@ class Text implements Iterator<[number, number]> {
     }
     next(character: Character): IteratorResult<[number, number]> {
         if (!this.currentLine || this.currentLine.done) this.currentLine = new Line((this.options.girth ?? 1) + .5)
-        character.character.move(this._x, 0)
+        let extraSpace = 0
+        if (character instanceof Fale && character.diacritics[0] && this.currentLine.words.length > 0) {
+            extraSpace = this.options.girth ?? 1
+        }
+        character.character.move(this._x + extraSpace, 0)
 
-        const result = this.currentLine.next(character.character)
+        const result = this.currentLine.next(character)
 
 
         this._x = result.value
@@ -159,6 +164,7 @@ const router = new Router()
         const defaults = Defaults as unknown as Required<Body["options"]>
         const { syllables, options } = ctx.request.body as Body
         const {
+            alts = defaults.alts,
             bang = defaults.bang,
             stroke = defaults.stroke,
             girth = defaults.girth,
@@ -176,7 +182,8 @@ const router = new Router()
         const faleOptions: FaleOptions = {
             girth,
             opens: opens === true || (opens === "sometimes" && syllables.length > 1),
-            vowel: (vowels === "sometimes" ? undefined : vowels) ?? undefined
+            vowel: (vowels === "sometimes" ? undefined : vowels) ?? undefined,
+            alts
         }
         if (bang) text.next(text.moja("!bang-onset"))
         for (const [index, syllable] of syllables.entries()) {

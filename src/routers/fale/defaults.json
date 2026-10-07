@@ -12,5 +12,6 @@
     "opens": "sometimes",
     "vowels": "sometimes",
     "crisp": true,
-    "bang": false
+    "bang": false,
+    "alts": {}
 }

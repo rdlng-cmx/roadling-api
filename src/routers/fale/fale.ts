@@ -12,12 +12,14 @@ export interface FaleOptions {
     vowel?: boolean
     flip?: boolean,
     girth?: number,
+    alts?: Record<string, string>|string[]
 }
 interface GlyphData<N extends string> {
     glyph: N | undefined,
 }
+type Polyglyph<N extends GlyphData<string>> = Map<string, N> 
 
-interface ConsonantData extends GlyphData<Consonant> {
+interface ConsonantData extends GlyphData<string> {
     hook: "top" | "bottom" | boolean,
     extend?: [number, number],
     except?: ConsonantExcept[],
@@ -30,12 +32,12 @@ interface ConsonantData extends GlyphData<Consonant> {
 interface DiacriticData extends GlyphData<`diacritic-${Diacritic}`> {
     space?: [number, number]
 }
-type ConsonantExcept = Omit<ConsonantData, "glyph" | "alts" | "except"> & { use?: string, glyph: Consonant | "open" }
-type FaleType<N extends string, T extends GlyphData<string> = GlyphData<N>> = Record<N, T>
+type ConsonantExcept = Omit<ConsonantData, "glyph" | "alts" | "except"> & { use?: string, glyph: string | "open" }
+type FaleType<N extends string, T extends GlyphData<string> = GlyphData<N>> = Record<N, T|Polyglyph<T>>
 export interface FaleData {
     consonants: FaleType<Consonant, ConsonantData>
     vowels: FaleType<Vowel>
-    diacritic: FaleType<Diacritic, DiacriticData>
+    diacritics: FaleType<Diacritic, DiacriticData>
     punctuation: FaleType<Punctuation>
 }
 type HasElement = { element: Element }
@@ -57,22 +59,43 @@ export class Fale extends Character {
     static glyphs: Element
     static readonly data: FaleData = {
         consonants: {
-            p: {
+            p: new Map([
+                ["", {
                 glyph: "p",
                 extend: [
                     0,
                     2
                 ],
                 hook: "top"
-            },
-            b: {
+            }]
+            , [
+                "old", {
+                glyph: "p-old",
+                extend: [
+                    0,
+                    2
+                ],
+                hook: "top"
+            }
+            ]]),
+            b: new Map([
+                ["", {
                 glyph: "b",
                 extend: [
                     0,
                     2
                 ],
                 hook: "bottom"
-            },
+            }],
+                ["old", {
+                glyph: "b-old",
+                extend: [
+                    0,
+                    2
+                ],
+                hook: "bottom"
+            }]
+            ]),
             t: {
                 glyph: "t",
                 hook: true,
@@ -91,10 +114,6 @@ export class Fale extends Character {
                 glyph: "d",
                 hook: true,
                 except: [
-                    {
-                        glyph: "l",
-                        hook: "bottom"
-                    }
                 ]
             },
             k: {
@@ -111,25 +130,10 @@ export class Fale extends Character {
                     "hook-top": "g-top"
                 },
                 except: [
-                    {
-                        glyph: "l",
-                        hook: "bottom",
-                        extend: [
-                            0,
-                            0
-                        ]
-                    },
-                    {
-                        glyph: "r",
-                        hook: "bottom",
-                        extend: [
-                            0,
-                            0
-                        ]
-                    }
                 ]
             },
-            r: {
+            r: new Map([
+                ["", {
                 glyph: "r",
                 hook: true,
                 extend: [
@@ -137,7 +141,7 @@ export class Fale extends Character {
                     4
                 ],
                 alts: {
-                    open: "r-open"
+                    open: "r-open",
                 },
                 except: [
                     {
@@ -154,7 +158,8 @@ export class Fale extends Character {
                         extend: [
                             0,
                             0
-                        ]
+                        ],
+                        use: "r-open"
                     },
                     {
                         glyph: "open",
@@ -166,7 +171,20 @@ export class Fale extends Character {
                         ]
                     }
                 ]
-            },
+            }],
+            ["old", {
+                glyph: "r-old",
+                hook: "bottom",
+                extend: [
+                    0,
+                    0
+                ],
+                alts: {
+                    "hook-top": "r-top",
+                    open: "r-open-old"
+                }
+            } 
+            ]]),
             h: {
                 glyph: "h",
                 hook: "bottom",
@@ -223,7 +241,8 @@ export class Fale extends Character {
                     }
                 ]
             },
-            s: {
+            s: new Map([
+                ["", {
                 glyph: "s",
                 hook: true,
                 extend: [
@@ -233,7 +252,15 @@ export class Fale extends Character {
                 alts: {
                     open: "s-open"
                 }
-            },
+            }], ["old", {
+                glyph: "s",
+                hook: true,
+                extend: [
+                    2,
+                    2
+                ]
+            }]
+            ]),
             dz: {
                 glyph: "dz",
                 hook: "top"
@@ -263,7 +290,7 @@ export class Fale extends Character {
                     open: "m-open"
                 }
             },
-            l: {
+            l: new Map([["", {
                 glyph: "l",
                 hook: true,
                 extend: [
@@ -299,13 +326,24 @@ export class Fale extends Character {
                         extend: [0, 0]
                     }
                 ]
-            }
+            }], ["old", {
+                glyph: "l-old",
+                hook: "top",
+                extend: [
+                    0, 0
+                ],
+                alts: {
+                    open: "l-open-old"
+                },
+                except: [
+                ]
+            }]])
         },
         punctuation: {
             "open-bottom": { glyph: "open-bottom" },
             "open-top": { glyph: "open-top" },
         },
-        diacritic: {
+        diacritics: {
             w: {
                 glyph: "diacritic-w",
             },
@@ -405,18 +443,42 @@ export class Fale extends Character {
     static readonly analyze = (syllable: string) => Fale.validSyllables[Fale.parse(syllable)] ?? new Set(["invalid"])
     private readonly setData = (syllable: string) => {
         const { onset, nucleus, coda, diacritic1, diacritic2 } = Fale.validate(syllable)?.groups! as { onset: Consonant, nucleus: Vowel, coda: Consonant, diacritic1: Diacritic, diacritic2: Diacritic }
-        this.diacritic = [diacritic1, diacritic2].map(glyph => {
+        this.diacritics = [diacritic1, diacritic2].map(glyph => {
             if (!glyph) return undefined;
-            return { element: this.grab("diacritic-" + glyph), ...Fale.data.diacritic[glyph] }
+            return { element: this.grab("diacritic-" + glyph), ...this.getData("diacritics", glyph) }
         }) as [DiacriticGlyph | undefined, DiacriticGlyph | undefined]
-        this.vowel = { element: this.grab(nucleus), ...Fale.data.vowels[nucleus] }
-        this.consonants = [onset, coda].map(glyph => {
-            if (!glyph) return undefined;
-            return { element: this.grab(glyph), ...Fale.data.consonants[glyph] }
+        this.vowel = { element: this.grab(nucleus), ...this.getData<Vowel>("vowels", nucleus)}
+        this.consonants = [onset, coda].map(_glyph => {
+            if (!_glyph) return undefined;
+            const glyph = this.getData<Consonant>("consonants", _glyph).glyph!
+            console.log(glyph)
+            return { element: this.grab(glyph), ...this.getData("consonants", _glyph) }
         }) as [ConsonantGlyph | undefined, ConsonantGlyph | undefined]
     }
+    private readonly getData = <N extends string>(prop: keyof typeof Fale["data"], value: N): GlyphData<N> => {
+        const dataset = Fale["data"][prop]
+        const find = (str: string) => (dataset[value as keyof typeof dataset] as unknown as Polyglyph<GlyphData<N>>).get(str)
+        if (dataset[value as keyof typeof dataset] as any instanceof Map) {
+            let alt: string|undefined = ""
+            const alts = this.options?.alts
+            if (Array.isArray(alts)) {
+                for (const str of alts) {
+                    const validAlt = find(str)
+                    if (validAlt) return validAlt
+                }
+                return find("")!
+            }
+            else {
+            alt = alts?.[value] ?? ""
+            const data = find(alt) as GlyphData<N>
+            return data
+            }
+        }
+        
+        return dataset[value as keyof typeof dataset]
+    }
     private vowel!: VowelGlyph;
-    private diacritic: [DiacriticGlyph | undefined, DiacriticGlyph | undefined] = [, ,]
+    public diacritics: [DiacriticGlyph | undefined, DiacriticGlyph | undefined] = [, ,]
     private consonants: [ConsonantGlyph | undefined, ConsonantGlyph | undefined] = [, ,]
     public get attributes() {
         return Fale.analyze(this._syllable)
@@ -467,7 +529,7 @@ export class Fale extends Character {
     private readonly writeClosedInflector = () => {
         const { hook, element } = this.coda!
         const y = (hook === "top") ? "top" : "bottom"
-        const [diacritic1] = this.diacritic
+        const [diacritic1] = this.diacritics
         diacritic1?.element.remove()
         let diacriticOpen = diacritic1 ? "-" + diacritic1.glyph : ""
         const open = this.grab("open-" + y + diacriticOpen)
@@ -476,6 +538,7 @@ export class Fale extends Character {
     }
     private readonly writeClosedSyllable = () => {
         const [onset, coda] = this.consonants
+        
         if (!onset || !coda) return;
         const space = this.onsetGlyph.bbox().width + 2
         const except = onset.except?.find(data => data.glyph === coda.glyph)
@@ -485,6 +548,7 @@ export class Fale extends Character {
         if (except?.use) this.onsetGlyph = this.grab(except.use)
 
         const goBy = except ?? onset
+        console.log(goBy)
         let hook: "top" | "bottom" | false = goBy.hook === true ? coda?.hook === true ? "top" : coda?.hook : goBy.hook === false ? false : goBy.hook
 
         const conflict = typeof onset.hook === "string" && typeof coda.hook === "string" && onset.hook !== coda.hook
@@ -505,6 +569,7 @@ export class Fale extends Character {
 
         this.codaGlyph.move(space, 0).flip('x')
 
+        console.log(hook)
         if (hook) {
 
             this.writeExtension([this.onsetGlyph, this.codaGlyph], hook, extension)
@@ -519,9 +584,10 @@ export class Fale extends Character {
         if (exceptOpen && exceptOpen.use) this.onsetGlyph = this.grab(exceptOpen.use)
         if (!hook) return;
         const y = (hook === true ? "bottom" : hook)
-        const [_, diacritic2] = this.diacritic
-        diacritic2?.element.remove()
-        let diacriticOpen = diacritic2 ? "-" + diacritic2.glyph : ""
+        const [_, diacritic2] = this.diacritics
+        const diacriticHasHook = diacritic2?.glyph === "diacritic-y"||diacritic2?.glyph === "diacritic-w"
+        if (diacriticHasHook) diacritic2?.element.remove()
+        let diacriticOpen = diacritic2 && diacriticHasHook ? "-" + diacritic2.glyph : ""
         const open = this.grab("open-" + y + diacriticOpen)
         open.move(element.bbox().width, hook === "top" ? 0 : element.bbox().height - open.bbox().height).flip('x')
         this.writeExtension([onset.element, open], y, exceptOpen?.extend ?? this.extension)
@@ -552,7 +618,7 @@ export class Fale extends Character {
         const [onset, coda = onset] = glyphs
         const { x: onsetX, y: onsetY } = onset.bbox()
         const { x2: codaX2, y: codaY } = coda.bbox()
-        const [diacritic1, diacritic2] = this.diacritic
+        const [diacritic1, diacritic2] = this.diacritics
         const defaultSpace = [(this.options.girth ?? 1)/2,0]
         const space1 = diacritic1?.space ?? defaultSpace
         const space2 = diacritic2?.space ?? defaultSpace
