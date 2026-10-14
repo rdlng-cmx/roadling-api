@@ -1,23 +1,33 @@
 import { Element } from "@svgdotjs/svg.js";
 import { G } from "@svgdotjs/svg.js";
 
-type Consonant = typeof Fale.consonants[number]
-type Diacritic = typeof Fale.diacritics[number]
-type Vowel = typeof Fale.vowels[number]
-type Mark = typeof Fale.marks[number]
-type Punctuation = typeof Fale.punctuation[number]
+export abstract class Character {
+    static glyphs: Element
+    public readonly character: G
+    public readonly prefix?: string
+    protected readonly grab = (glyph: string) => Character.glyphs.find(`#${this.prefix ? this.prefix + "-" : ""}${glyph}`)[0]?.clone().untransform().move(0, 0).addTo(this.character)
+    constructor(target: G) {
+        this.character = target.group()
+    }
+}
+
+export type Consonant = typeof Fale.consonants[number]
+export type Diacritic = typeof Fale.diacritics[number]
+export type Vowel = typeof Fale.vowels[number]
+export type Mark = typeof Fale.marks[number]
+export type Punctuation = typeof Fale.punctuation[number]
 
 export interface FaleOptions {
     opens?: boolean,
     vowel?: boolean
     flip?: boolean,
     girth?: number,
-    alts?: Record<string, string>|string[]
+    alts?: Record<string, string> | string[]
 }
 interface GlyphData<N extends string> {
     glyph: N | undefined,
 }
-type Polyglyph<N extends GlyphData<string>> = Map<string, N> 
+type Polyglyph<N extends GlyphData<string>> = Map<string, N>
 
 interface ConsonantData extends GlyphData<string> {
     hook: "top" | "bottom" | boolean,
@@ -33,7 +43,7 @@ interface DiacriticData extends GlyphData<`diacritic-${Diacritic}`> {
     space?: [number, number]
 }
 type ConsonantExcept = Omit<ConsonantData, "glyph" | "alts" | "except"> & { use?: string, glyph: string | "open" }
-type FaleType<N extends string, T extends GlyphData<string> = GlyphData<N>> = Record<N, T|Polyglyph<T>>
+type FaleType<N extends string, T extends GlyphData<string> = GlyphData<N>> = Record<N, T | Polyglyph<T>>
 export interface FaleData {
     consonants: FaleType<Consonant, ConsonantData>
     vowels: FaleType<Vowel>
@@ -44,57 +54,49 @@ type HasElement = { element: Element }
 type ConsonantGlyph = ConsonantData & HasElement
 type VowelGlyph = GlyphData<Vowel> & HasElement
 type DiacriticGlyph = DiacriticData & HasElement
-type SyllableAttribute = "closed" | "inflector" | "stress" | "invalid" | "punctuation"
+type SyllableAttribute = "closed" | "inflector" | "stress" | "invalid" | "punctuation" | "secondary"
 
-export abstract class Character {
-    static glyphs: Element
-    public readonly character: G
-    public readonly prefix?: string
-    protected readonly grab = (glyph: string) => Character.glyphs.find(`#${this.prefix ? this.prefix + "-" : ""}${glyph}`)[0]?.clone().untransform().move(0, 0).addTo(this.character)
-    constructor(target: G) {
-        this.character = target.group()
-    }
-}
+
 export class Fale extends Character {
     static glyphs: Element
     static readonly data: FaleData = {
         consonants: {
             p: new Map([
                 ["", {
-                glyph: "p",
-                extend: [
-                    0,
-                    2
-                ],
-                hook: "top"
-            }]
-            , [
-                "old", {
-                glyph: "p-old",
-                extend: [
-                    0,
-                    2
-                ],
-                hook: "top"
-            }
-            ]]),
+                    glyph: "p",
+                    extend: [
+                        0,
+                        2
+                    ],
+                    hook: "top"
+                }]
+                , [
+                    "old", {
+                        glyph: "p-old",
+                        extend: [
+                            0,
+                            2
+                        ],
+                        hook: "top"
+                    }
+                ]]),
             b: new Map([
                 ["", {
-                glyph: "b",
-                extend: [
-                    0,
-                    2
-                ],
-                hook: "bottom"
-            }],
+                    glyph: "b",
+                    extend: [
+                        0,
+                        2
+                    ],
+                    hook: "bottom"
+                }],
                 ["old", {
-                glyph: "b-old",
-                extend: [
-                    0,
-                    2
-                ],
-                hook: "bottom"
-            }]
+                    glyph: "b-old",
+                    extend: [
+                        0,
+                        2
+                    ],
+                    hook: "bottom"
+                }]
             ]),
             t: {
                 glyph: "t",
@@ -116,14 +118,24 @@ export class Fale extends Character {
                 except: [
                 ]
             },
-            k: {
-                glyph: "k",
-                hook: "top",
-                alts: {
-                    "hook-bottom": "k-bottom"
-                },
-            },
-            g: {
+            k: new Map([
+                ["", {
+                    glyph: "k",
+                    hook: "top",
+                    alts: {
+                        "hook-bottom": "k-bottom"
+                    },
+                }],
+                ["old", {
+                    glyph: "k-bottom",
+                    hook: "bottom",
+                    alts: {
+                        "hook-top": "k",
+                        "open": "k"
+                    },
+                }]
+            ]),
+            g: new Map([["", {
                 glyph: "g",
                 hook: "bottom",
                 alts: {
@@ -131,88 +143,124 @@ export class Fale extends Character {
                 },
                 except: [
                 ]
-            },
-            r: new Map([
-                ["", {
-                glyph: "r",
-                hook: true,
-                extend: [
-                    4,
-                    4
-                ],
-                alts: {
-                    open: "r-open",
-                },
-                except: [
-                    {
-                        glyph: "g",
-                        hook: "bottom",
-                        extend: [
-                            0,
-                            0
-                        ]
-                    },
-                    {
-                        glyph: "n",
-                        hook: "bottom",
-                        extend: [
-                            0,
-                            0
-                        ],
-                        use: "r-open"
-                    },
-                    {
-                        glyph: "open",
-                        hook: "bottom",
-                        use: "r-open",
-                        extend: [
-                            0,
-                            0
-                        ]
-                    }
-                ]
             }],
             ["old", {
-                glyph: "r-old",
-                hook: "bottom",
-                extend: [
-                    0,
-                    0
-                ],
+                glyph: "g-top",
+                hook: "top",
                 alts: {
-                    "hook-top": "r-top",
-                    open: "r-open-old"
+                    "hook-bottom": "g",
+                    "open": "g"
                 }
-            } 
-            ]]),
-            h: {
+            }]]),
+            r: new Map([
+                ["", {
+                    glyph: "r",
+                    hook: true,
+                    extend: [
+                        4,
+                        4
+                    ],
+                    alts: {
+                        open: "r-open",
+                    },
+                    except: [
+                        {
+                            glyph: "g",
+                            hook: "bottom",
+                            extend: [
+                                0,
+                                0
+                            ]
+                        },
+                        {
+                            glyph: "n",
+                            hook: "bottom",
+                            extend: [
+                                0,
+                                0
+                            ],
+                            use: "r-open"
+                        },
+                        {
+                            glyph: "open",
+                            hook: "bottom",
+                            use: "r-open",
+                            extend: [
+                                0,
+                                0
+                            ]
+                        }
+                    ]
+                }],
+                ["old", {
+                    glyph: "r-old",
+                    hook: "bottom",
+                    extend: [
+                        0,
+                        0
+                    ],
+                    alts: {
+                        "hook-top": "r-top",
+                        open: "r-open-old"
+                    }
+                }
+                ]]),
+            h: new Map([["", {
                 glyph: "h",
                 hook: "bottom",
                 alts: {
                     open: "h-open"
                 }
-            },
-            n: {
+            }], ["old", {
+                glyph: "h-old",
+                hook: "bottom",
+                alts: {
+                    open: "h-open-old"
+                }
+            }]]),
+            n: new Map([["", {
                 glyph: "n",
                 hook: true,
                 alts: {
                     open: "n-open"
                 }
-            },
-            hr: {
-                glyph: "hr",
+            }], ["old", {
+                glyph: "n-old",
+                hook: true,
+                alts: {
+                    open: "n-open-old"
+                }
+            }]]),
+            x: new Map([["", {
+                glyph: "x",
                 hook: "top",
                 alts: {
-                    open: "hr-open"
+                    open: "x-open"
                 }
-            },
-            c: {
-                glyph: "c",
+            }], ["old", {
+                glyph: "x-old",
                 hook: "top",
                 alts: {
-                    "open": "c-open"
+                    open: "x-open-old"
                 }
-            },
+            }]]),
+            c: new Map([
+                ["", {
+                    glyph: "c",
+                    hook: "top",
+                    alts: {
+                        "open": "c-open"
+                    }
+                }],
+                ["old", {
+                    glyph: "c-old",
+                    hook: "top",
+                    alts: {
+                        "open": "c-open-old",
+                        "hook-bottom": "c-hook-bottom"
+                    }
+                }]
+            ]),
             dj: {
                 glyph: "dj",
                 hook: "top",
@@ -243,23 +291,23 @@ export class Fale extends Character {
             },
             s: new Map([
                 ["", {
-                glyph: "s",
-                hook: true,
-                extend: [
-                    2,
-                    2
-                ],
-                alts: {
-                    open: "s-open"
-                }
-            }], ["old", {
-                glyph: "s",
-                hook: true,
-                extend: [
-                    2,
-                    2
-                ]
-            }]
+                    glyph: "s",
+                    hook: true,
+                    extend: [
+                        2,
+                        2
+                    ],
+                    alts: {
+                        open: "s-open"
+                    }
+                }], ["old", {
+                    glyph: "s",
+                    hook: true,
+                    extend: [
+                        2,
+                        2
+                    ]
+                }]
             ]),
             dz: {
                 glyph: "dz",
@@ -279,17 +327,36 @@ export class Fale extends Character {
                     }
                 ]
             },
-            f: {
-                glyph: "f",
-                hook: true
-            },
-            m: {
+            f: new Map([
+                ["", {
+                    glyph: "f",
+                    hook: true
+                }],
+                ["old", {
+                    glyph: "f-old",
+                    extend: [
+                        0, 0
+                    ],
+                    hook: "bottom",
+                    alts: {
+                        open: "f-open-old",
+                        "hook-top": "f-hook-top"
+                    }
+                }]
+            ]),
+            m: new Map([["", {
                 glyph: "m",
                 hook: true,
                 alts: {
                     open: "m-open"
                 }
-            },
+            }], ["old", {
+                glyph: "m-old",
+                hook: true,
+                alts: {
+                    open: "m-open-old"
+                }
+            }]]),
             l: new Map([["", {
                 glyph: "l",
                 hook: true,
@@ -333,15 +400,42 @@ export class Fale extends Character {
                     0, 0
                 ],
                 alts: {
-                    open: "l-open-old"
+                    open: "l-open-old",
+                    "hook-bottom": "l-bottom"
                 },
                 except: [
                 ]
             }]])
         },
         punctuation: {
-            "open-bottom": { glyph: "open-bottom" },
-            "open-top": { glyph: "open-top" },
+            "null": new Map([
+                ["", {glyph: "null"}],
+                ["old", {glyph: "null-old"}]
+            ]),
+            "open-bottom": new Map([
+                ["", { glyph: "open-bottom" }],
+                ["old", { glyph: "open-bottom-old" }]
+            ]),
+            "open-top": new Map([
+                ["", { glyph: "open-top" }],
+                ["old", { glyph: "open-top-old" }]
+            ]),
+            "open-bottom-diacritic-w": new Map([
+                ["", { glyph: "open-bottom-diacritic-w" }],
+                ["old", { glyph: "open-bottom-diacritic-w-old" }]
+            ]),
+            "open-top-diacritic-w": new Map([
+                ["", { glyph: "open-top-diacritic-w" }],
+                ["old", { glyph: "open-top-diacritic-w-old" }]
+            ]),
+            "open-bottom-diacritic-y": new Map([
+                ["", { glyph: "open-bottom-diacritic-y" }],
+                ["old", { glyph: "open-bottom-diacritic-y-old" }]
+            ]),
+            "open-top-diacritic-y": new Map([
+                ["", { glyph: "open-top-diacritic-y" }],
+                ["old", { glyph: "open-top-diacritic-y-old" }]
+            ]),
         },
         diacritics: {
             w: {
@@ -377,20 +471,20 @@ export class Fale extends Character {
         ".CV": new Set([]),
         ".CGV": new Set([]),
         ".CVG": new Set([]),
-        "-V": new Set(["inflector",]),
-        "-GV": new Set(["inflector",]),
-        "-VG": new Set(["inflector",]),
-        "-VC": new Set(["inflector", "closed"]),
-        "-GVC": new Set(["inflector", "closed"]),
-        "-VGC": new Set(["inflector", "closed"]),
-        "*CV": new Set(["stress",]),
-        "*CGV": new Set(["stress",]),
-        "*CVG": new Set(["stress",]),
-        "*CVC": new Set(["stress", "closed"]),
-        "*CGVC": new Set(["stress", "closed"]),
-        "*CVGC": new Set(["stress", "closed"]),
-        "*CGVG": new Set(["stress"]),
-        "*CGVGC": new Set(["stress", "closed"])
+        "-V": new Set([]),
+        "-GV": new Set([]),
+        "-VG": new Set([]),
+        "-VC": new Set([]),
+        "-GVC": new Set([]),
+        "-VGC": new Set([]),
+        "*CV": new Set([]),
+        "*CGV": new Set([]),
+        "*CVG": new Set([]),
+        "*CVC": new Set([]),
+        "*CGVC": new Set([]),
+        "*CVGC": new Set([]),
+        "*CGVG": new Set([]),
+        "*CGVGC": new Set([])
     }
     static readonly consonants = [
         "p", "b",
@@ -399,7 +493,7 @@ export class Fale extends Character {
         "m", "n",
         "c", "s",
         "l", "f",
-        "h", "hr",
+        "h", "x",
         "ts", "tc",
         "dz", "dj",
         "r"
@@ -413,15 +507,15 @@ export class Fale extends Character {
     ] as const;
 
     static readonly marks = [
-        ".", "*", "-",
+        ".", "*", "-", "^"
     ] as const;
     static readonly punctuation = [
         "open-top",
         "open-bottom",
-        "open-top-y",
-        "open-bottom-y",
-        "open-top-w",
-        "open-bottom-w"
+        "open-top-diacritic-y",
+        "open-bottom-diacritic-y",
+        "open-top-diacritic-w",
+        "open-bottom-diacritic-w"
     ]
     static readonly validate = (syllable: string) => new RegExp(`^(?<mark>${Fale.marks.map(mark => '\\' + mark).join("|")})(?<onset>${Fale.consonants.join("|")})?(?<diacritic1>${Fale.diacritics.join("|")})?(?<nucleus>${Fale.vowels.join("|")})(?<diacritic2>${Fale.diacritics.join("|")})?(?<coda>${Fale.consonants.join("|")})?$`).exec(syllable)
     static readonly parse = (syllable: string) => {
@@ -440,14 +534,23 @@ export class Fale extends Character {
                 else throw new Error()
             }).join("")
     }
-    static readonly analyze = (syllable: string) => Fale.validSyllables[Fale.parse(syllable)] ?? new Set(["invalid"])
+    static readonly analyze = (syllable: string) => {
+        const parsedSyllable = Fale.parse(syllable)
+        const analysis = Fale.validSyllables[parsedSyllable]
+        if (!analysis) return new Set(["invalid"])
+        if (syllable[0] === "*") analysis.add("stress")
+        if (syllable[0] === "^") analysis.add("secondary")
+        if (syllable[0] === "-") analysis.add("inflector")
+        if (parsedSyllable.slice(-1) === "C") analysis.add("closed")
+        return analysis
+    }
     private readonly setData = (syllable: string) => {
         const { onset, nucleus, coda, diacritic1, diacritic2 } = Fale.validate(syllable)?.groups! as { onset: Consonant, nucleus: Vowel, coda: Consonant, diacritic1: Diacritic, diacritic2: Diacritic }
         this.diacritics = [diacritic1, diacritic2].map(glyph => {
             if (!glyph) return undefined;
             return { element: this.grab("diacritic-" + glyph), ...this.getData("diacritics", glyph) }
         }) as [DiacriticGlyph | undefined, DiacriticGlyph | undefined]
-        this.vowel = { element: this.grab(nucleus), ...this.getData<Vowel>("vowels", nucleus)}
+        this.vowel = { element: this.grab(nucleus), ...this.getData<Vowel>("vowels", nucleus) }
         this.consonants = [onset, coda].map(_glyph => {
             if (!_glyph) return undefined;
             const glyph = this.getData<Consonant>("consonants", _glyph).glyph!
@@ -459,7 +562,7 @@ export class Fale extends Character {
         const dataset = Fale["data"][prop]
         const find = (str: string) => (dataset[value as keyof typeof dataset] as unknown as Polyglyph<GlyphData<N>>).get(str)
         if (dataset[value as keyof typeof dataset] as any instanceof Map) {
-            let alt: string|undefined = ""
+            let alt: string | undefined = ""
             const alts = this.options?.alts
             if (Array.isArray(alts)) {
                 for (const str of alts) {
@@ -469,12 +572,12 @@ export class Fale extends Character {
                 return find("")!
             }
             else {
-            alt = alts?.[value] ?? ""
-            const data = find(alt) as GlyphData<N>
-            return data
+                alt = alts?.[value] ?? ""
+                const data = find(alt) as GlyphData<N>
+                return data
             }
         }
-        
+
         return dataset[value as keyof typeof dataset]
     }
     private vowel!: VowelGlyph;
@@ -501,7 +604,9 @@ export class Fale extends Character {
         opens: true,
         girth: 1
     }) {
+
         super(target)
+
         const { attributes } = this
         if (attributes.has("invalid")) return;
         const showVowel = options.vowel ?? (attributes.has("stress") || attributes.has("inflector"))
@@ -521,7 +626,8 @@ export class Fale extends Character {
 
     //writing methods
     private readonly writeOpenInflector = () => {
-        const nullGlyph = this.grab("null")
+        const nullData = this.getData("punctuation", "null")
+        const nullGlyph = this.grab(nullData.glyph!)
         if (this.options.flip) nullGlyph.flip('x')
         this.writeDiacritics([nullGlyph])
         return nullGlyph
@@ -532,13 +638,14 @@ export class Fale extends Character {
         const [diacritic1] = this.diacritics
         diacritic1?.element.remove()
         let diacriticOpen = diacritic1 ? "-" + diacritic1.glyph : ""
-        const open = this.grab("open-" + y + diacriticOpen)
+        const punctuationName = "open-" + y + diacriticOpen
+        const open = this.grab(this.getData("punctuation", punctuationName).glyph ?? punctuationName)
         element.move(open.bbox().width, y === "top" ? 0 : open.bbox().height - element.bbox().height).flip('x')
         this.writeExtension([open, element], y)
     }
     private readonly writeClosedSyllable = () => {
         const [onset, coda] = this.consonants
-        
+
         if (!onset || !coda) return;
         const space = this.onsetGlyph.bbox().width + 2
         const except = onset.except?.find(data => data.glyph === coda.glyph)
@@ -577,7 +684,8 @@ export class Fale extends Character {
     }
 
     private readonly writeStressedOpenSyllable = () => {
-        if (this.options.opens) return this.writeOpenSyllable();
+        console.log(this.options.opens)
+        if (!this.options.opens) return this.writeOpenSyllable();
         const onset = this.consonants[0]!
         const { element, hook, except } = onset
         const exceptOpen = except?.find(data => data.glyph === "open")
@@ -585,10 +693,13 @@ export class Fale extends Character {
         if (!hook) return;
         const y = (hook === true ? "bottom" : hook)
         const [_, diacritic2] = this.diacritics
-        const diacriticHasHook = diacritic2?.glyph === "diacritic-y"||diacritic2?.glyph === "diacritic-w"
+        const diacriticHasHook = diacritic2?.glyph === "diacritic-y" || diacritic2?.glyph === "diacritic-w"
         if (diacriticHasHook) diacritic2?.element.remove()
         let diacriticOpen = diacritic2 && diacriticHasHook ? "-" + diacritic2.glyph : ""
-        const open = this.grab("open-" + y + diacriticOpen)
+        const punctuationName = "open-" + y + diacriticOpen
+        console.log(punctuationName)
+        console.log(this.getData("punctuation", punctuationName))
+        const open = this.grab(this.getData("punctuation", punctuationName).glyph ?? punctuationName)
         open.move(element.bbox().width, hook === "top" ? 0 : element.bbox().height - open.bbox().height).flip('x')
         this.writeExtension([onset.element, open], y, exceptOpen?.extend ?? this.extension)
     }
@@ -619,7 +730,7 @@ export class Fale extends Character {
         const { x: onsetX, y: onsetY } = onset.bbox()
         const { x2: codaX2, y: codaY } = coda.bbox()
         const [diacritic1, diacritic2] = this.diacritics
-        const defaultSpace = [(this.options.girth ?? 1)/2,0]
+        const defaultSpace = [(this.options.girth ?? 1) / 2, 0]
         const space1 = diacritic1?.space ?? defaultSpace
         const space2 = diacritic2?.space ?? defaultSpace
         diacritic1?.element.move(onsetX - space1[0] - diacritic1.element.bbox().width - (this.options.girth ?? 0), onsetY - space1[1])
@@ -633,7 +744,7 @@ export class Moja extends Character {
     constructor(target: G, _moja: string) {
         super(target)
         const groups = Moja.validate(_moja)?.groups
-        if (!groups || !groups.moja) return; 
+        if (!groups || !groups.moja) return;
         this.grab(groups.moja)
     }
 }
@@ -644,7 +755,7 @@ export class Dan extends Character {
         super(target)
         const groups = Dan.validate(_dan)?.groups
         console.log(groups)
-        if (!groups || !groups.dan) return; 
+        if (!groups || !groups.dan) return;
         this.grab(groups.dan)
     }
 }

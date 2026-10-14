@@ -12,6 +12,7 @@ import { Svg } from "@svgdotjs/svg.js";
 import { Character, Dan, Fale, FaleOptions, Moja } from "./fale.ts";
 import Defaults from './defaults.json' with {type: 'json'}
 import sharp from "sharp";
+import { Kinapa, Napa } from "./napa.mts";
 
 const window = createSVGWindow()
 const document = window.document
@@ -52,15 +53,15 @@ class Line implements Iterator<number | null> {
 
     constructor(private spacing: number = 2, private margin: number = Infinity) {
     }
-    public readonly words: G[] = []
+    public readonly words: Character[] = []
     get height() {
-        return this.words.map(word => word.bbox().height).reduce((max, current) => {
+        return this.words.map(word => word.character.bbox().height).reduce((max, current) => {
             return current > max ? current : max;
         })
     }
     align() {
         for (const word of this.words) {
-            word.y(this.height - word.bbox().height)
+            word.character.y(this.height - word.character.bbox().height)
         }
     }
     next(character: Character): IteratorResult<number | null> {
@@ -69,7 +70,7 @@ class Line implements Iterator<number | null> {
             this._done = true
             return { value: null, done: true }
         }
-        this.words.push(character.character)
+        this.words.unshift(character)
         this.align()
         this.at = character.character.bbox().x2 + this.spacing
         return { value: this.at, done: false }
@@ -101,8 +102,15 @@ class Text implements Iterator<[number, number]> {
     next(character: Character): IteratorResult<[number, number]> {
         if (!this.currentLine || this.currentLine.done) this.currentLine = new Line((this.options.girth ?? 1) + .5)
         let extraSpace = 0
-        if (character instanceof Fale && character.diacritics[0] && this.currentLine.words.length > 0) {
+        if (character instanceof Fale
+            && character.diacritics[0]
+            && !(character.attributes.has("inflector") && character.attributes.has("closed")) 
+            && this.currentLine.words.length > 0) {
             extraSpace = this.options.girth ?? 1
+        }
+        console.log(this.currentLine.words)
+        if (character instanceof Moja || this.currentLine.words[0] instanceof Moja) {
+            extraSpace = (this.options.girth ?? 1) * 2
         }
         character.character.move(this._x + extraSpace, 0)
 
@@ -181,7 +189,7 @@ const router = new Router()
         let stress = Infinity
         const faleOptions: FaleOptions = {
             girth,
-            opens: opens === true || (opens === "sometimes" && syllables.length > 1),
+            opens: opens === true || (opens === "sometimes" && syllables.length === 1),
             vowel: (vowels === "sometimes" ? undefined : vowels) ?? undefined,
             alts
         }
@@ -219,6 +227,12 @@ const router = new Router()
         ctx.body = file
         ctx.set("Content-Type", "image/" + format)
         await next()
+    })
+    .post('/napa', async (ctx, next) => {
+        const { napa } = ctx.request.body as unknown as {napa: Napa}
+        const kinapa = new Kinapa(napa)
+        ctx.body = kinapa.forms
+        await next();
     })
 
 export default router
