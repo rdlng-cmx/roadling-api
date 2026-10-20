@@ -1,109 +1,271 @@
 import { Consonant, Fale, Mark, Vowel } from "./fale.ts"
 
-type Punapa =  `${Exclude<Consonant, "dj"|"tc"|"ts"|"dz">}${Exclude<Vowel, "i">}`
-export type Napa = [Punapa, ...Punapa[]]
+type Nanapa = `${Exclude<Consonant, "dj" | "tc" | "ts" | "dz">}${Exclude<Vowel, "i">}`
+type TriliteralRadicalEnding = `${Exclude<Consonant, "dj" | "tc" | "ts" | "dz" | "p" | "t" | "k" | "b" | "d" | "g">}e`
+export type Napa = [Nanapa] | [Nanapa, Nanapa] | [Nanapa, Nanapa, TriliteralRadicalEnding]
 
-const napa: Napa = ["ko", "ba"]
 const coronals: Consonant[] = ["n", "l", "c", "s", "t", "d"]
 const backVowels: Vowel[] = ["o", "u"]
-const clippedVowels: Vowel[] = ["e", "u"]
-const nasals = ["n", "m"]
+const clippedVowels = ["e", "u"]
+const nasals = ["n", "m", "l"]
 interface Transformer {
     validate?: (form: string[]) => boolean
     transform: (form: string[]) => string[]
 }
+type Kinapa = [Napa | Kinapa | null, Napa | Kinapa | null]
 const isUntransformed = (form: string[]) => form.every(syllable => !Fale.marks.includes(syllable[0] as Mark))
-const mark = (form: string[], mark: Mark[]) => form.map((syllable, index) => {
-    if (Fale.marks.includes(syllable[0] as Mark)) syllable = mark[index] + syllable.slice(1)
-    else syllable = mark[index] + syllable
+const mark = (form: string[], marks: Mark[]) => form.map((syllable, index) => {
+    if (Fale.marks.includes(syllable[0] as Mark)) syllable = marks[index] + syllable.slice(1)
+    else syllable = marks[index] + syllable
     return syllable
 })
 
-export class Kinapa {
-    static transformers: {[key: string]: Transformer} = {
-        toNeutral: {
+export class Word {
+    static negotiate = (tuple: [string[], string[]], prefix: boolean = false): string[] => {
+        let [first, second] = tuple
+        //if there's not a second stem, the first stem passes.
+        if (!second) return first;
+        //the first syllable of the first stem is always assumed to get stress. if the stem is a prefix, the second stem gets stress
+        let stress: number = prefix ? 1 : 0
+        //if the second stem is closed or has multiple roots, the first syllable of the second stem gets stress
+        const secondStemAnalysis = Fale.analyze(second[0])
+        if (secondStemAnalysis.has("closed") || second.length > 1) stress = 1
+
+        if (stress !== 0 || !first.every(syllable => Fale.marks.includes(syllable[0] as Mark))) first = mark(first, [stress === 0 ? "*" : ".", ...Array(first.length - 1).fill(".")])
+        second = mark(second, [stress === 1 ? "*" : ".", ...Array(second.length - 1).fill(".")])
+        let combinedForm = [...first, ...second]
+        combinedForm = Word.transform(combinedForm, "apocopes") as string[]
+
+        return combinedForm
+    }
+    static print(form: string[] | null) {
+        console.log(form)
+        if (!form) return null
+        return form.map(syllable => {
+            console.log(
+                syllable
+            )
+            syllable = syllable.replaceAll(/(?<=\.\w+)e/g, 'i')
+            if (Fale.marks.includes(syllable[0] as Mark)) return syllable.slice(1);
+            return syllable }).join("")
+            .replaceAll(/([aeou])\1/g, '$1\u0304')
+            .replaceAll("y", "ĭ")
+            .replaceAll("w", "ŭ")
+    }
+    static transform = (form: string[], key: keyof typeof Word.transformers) => {
+        const transformer = Word.transformers[key]
+        if (transformer.validate) if (!transformer.validate(form)) return null;
+        return transformer.transform(form)
+    }
+    static forStressedIndices = (form: string[], callback: (stress: string, afterStress: string, index: number) => any) => {
+        const stressedIndices = form.map((syllable, index) => syllable[0] === "*" ? index : null).filter(v => v !== null) as number[]
+        for (const index of stressedIndices) {
+            if (!form[index + 1]) continue;
+            callback(form[index], form[index + 1], index)
+        }
+    }
+    static transformers: { [key: string]: Transformer } = {
+        apocopes: {
+            transform: (form) => {
+                Word.forStressedIndices(form, (stress, afterStress, index) => {
+                    const clipReqs = [nasals.includes(afterStress[1]), clippedVowels.includes(afterStress[2]), stress[0] === "*", Fale.vowels.includes(stress.at(-1) as Vowel)]
+                    if (clipReqs.every(Boolean)) {
+                        form[index] = stress + afterStress.slice(1, 2)
+                        form.splice(index + 1, 1)
+                    }
+                })
+
+                console.log(form)
+                return form
+            }
+        },
+        toAbsolutive: {
             validate: isUntransformed,
             transform: (form) => {
                 if (form.length === 1) return mark(form, ["."])
                 if (form.length === 2) return mark(form, ["*", "."])
                 if (form.length === 3) return mark(form, [".", "*", "."])
-                if (form.length === 4) return mark(form, form.map((_syllable, index) => (index === 1 || index === 3) ? "*" : "."))
+                if (form.length >= 4) return mark(form, form.map((_syllable, index) => (index === 1 || index === 3) ? "*" : "."))
                 return form
             }
         },
-        toAccusative: {
+        toErgative: {
             validate: isUntransformed,
             transform: (form) => {
                 if (form.length === 1) return mark(form, ["*"])
                 if (form.length === 2) return mark(form, [".", "*"])
-                if (form.length === 3) return mark(form, ["*", ".", "*"])
-                if (form.length === 4) return mark(form, form.map((_syllable, index) => (index === 1 || index === 3) ? "*" : "."))
+                if (form.length === 3) return mark(form, ["^", ".", "*"])
+                if (form.length >= 4) return mark(form, form.map((_syllable, index) => (index === 1 || index === 3) ? "*" : "."))
                 return form
             }
         },
-        applyStressRules: {
+        toSimpleVerb: {
             transform: (form) => {
-                const analyzedSyllables = form.map(syllable => Fale.analyze(syllable))
-                const closedSyllables = analyzedSyllables.some(attributes => attributes.has("closed"))
-                if (closedSyllables) {
-                    const stresses = analyzedSyllables.map(attributes => attributes.has("closed") ? "*" : ".")
-                    return mark(form, stresses)
-                }
+                Word.forStressedIndices(form, (stressed, afterStressed, index) => {
+                    const toGeminate = afterStressed[1]
+                    console.log(form[index])
+                    form[index] += toGeminate
+                })
+                return form
+            }
+        },
+        toActiveVoice: {
+            transform: (form) => {
+                const first = form[0]
+                const [mark, consonant, vowel, ending = ""] = first
+                form[0] = mark + vowel + ending
+                form.unshift("." + consonant + "e")
+                return form
+            }
+        },
+        toPassiveVoice: {
+            transform: (form) => {
+                const first = form[0]
+                const vowel = first[2]
+                form.unshift("." + vowel)
+                return form
+            }
+        },
+        toPassiveInfinitive: {
+            transform: (form) => {
+                const first = form[0]
+                const [mark, consonant, vowel] = first
+                form[0] = mark + vowel
+                form.unshift("." + consonant + vowel)
+                return form
+            }
+        },
+        toConstructState: {
+            transform: (form) => {
+                const last = form.at(-1) as string
+                const vowel = last[2]
+                form.push("." + vowel)
+                return form
+            },
+        },
+        toAgent: {
+            transform: (form) => {
+                const first = form[0]
+                const [, consonant, vowel] = first
+                form.unshift("." + consonant + vowel)
                 return form
             }
         },
         insertSemiVowels: {
             transform: (form) => {
-                const stressedIndices = form.map((syllable, index) => syllable[0] === "*" ? index : null).filter(v => v !== null) as number[]
-                for (const index of stressedIndices) {
-                    let stressed = form[index]
-                    let afterStressed = form[index+1]
-                    if (!afterStressed) continue;
-
-                    if (backVowels.includes(afterStressed[2] as Vowel)) form[index] = stressed += "w";
-                    if ((afterStressed[2] === "u")
-                        || (afterStressed[2] === "e" &&
-                        (index === form.length - 2 || nasals.includes(afterStressed[1])))) {
-                        const keptConsonant = afterStressed[1]
-                        form.splice(index+1, 1)
-                        form[index] = stressed += keptConsonant
-                        afterStressed = form[index+1]
+                console.log("idk")
+                Word.forStressedIndices(form, (stressed, afterStressed, index) => {
+                    console.log(stressed)
+                    const position = Fale.consonants.includes(stressed.at(-1) as Consonant) ? stressed.length - (Fale.vowels.includes(stressed[1] as Vowel) ? 1 : 1) : stressed.length 
+                    if (!afterStressed) return;
+                    if (backVowels.includes(afterStressed[2] as Vowel)) {
+                        form[index] = stressed.slice(0, position) + "w" + stressed.slice(position);
+                        return form
                     }
-
-                    if (!afterStressed) continue;
+                    if (!afterStressed) return;
                     if (coronals.includes(afterStressed[1] as Consonant)) {
-                        const lastPhoneme = stressed[stressed.length-1]
-                        if (Fale.consonants.includes(lastPhoneme as Consonant)) form[index] = stressed = `${stressed.slice(0, -1)}y${stressed.slice(-1)}`
+                        const lastPhoneme = stressed[stressed.length - 1]
+                        if (Fale.consonants.includes(lastPhoneme as Consonant)) stressed = stressed = stressed.slice(0, position) + "y" + stressed.slice(position);
                         if (Fale.vowels.includes(lastPhoneme as Vowel)) form[index] = stressed += "y"
+                        
                     }
-                }
+                })
                 return form
             }
         }
     } as const;
-    constructor(public readonly napa: Napa) {    
+    constructor(public readonly napa: Napa, protected kinapa: Kinapa | null = null) {
+
     }
-    private transformWith = (transformers: (keyof (typeof Kinapa)["transformers"])[]) => () => {
-    let form: string[] = this.napa
-    for (const key of transformers) {
-        const transformer = Kinapa.transformers[key]
-        if (transformer.validate) if (!transformer.validate(form)) return null;
-        form = transformer.transform(form)
+    prefixes: string[] = []
+    suffixes: string[] = []
+    private transformWith = (transformers: (keyof (typeof Word)["transformers"]|null)[]) => () => {
+        const pause = transformers.findIndex(transformer => transformer === null)
+        console.log(transformers)
+        const preTransformers = pause < 0 ? transformers : transformers.slice(0, pause) as string[]
+        console.log(preTransformers)
+        const postTransformers = pause < 0 ? [] : transformers.slice(pause + 1) as string[]
+        console.log(postTransformers)
+        let napa: string[] = this.napa as string[]
+        for (const key of preTransformers) {
+            if (!napa) return null;
+            napa = Word.transform(napa, key as string) as string[]
+        }
+        console.log(napa)
+        const recursive = (kinapa: any[]) => {
+            if (kinapa === null) kinapa = napa
+            const [first, second] = [
+                !kinapa[0] ? napa :
+                    Array.isArray(kinapa[0]) ? recursive(kinapa[0] as string[]) as string[] :
+                        kinapa[0],
+                Array.isArray(kinapa[1]) ? recursive(kinapa[1] as string[]) as string[] :
+                    kinapa[1]
+            ] as [string[], string[]]
+
+            return second ? Word.negotiate([first, second]) : [first]
+        }
+        let word = this.kinapa !== null ? recursive(this.kinapa).flat() : napa
+        if (postTransformers) for (const key of postTransformers) {
+            if (!word) return null;
+            word = Word.transform(word, key) as string[]
+        }
+        return Word.transform(word, "insertSemiVowels")
     }
-    return form
-}
     private _forms = {
-        neutral: this.transformWith(["toNeutral", "insertSemiVowels"]),
-        accusative: this.transformWith(["toAccusative", "insertSemiVowels", "applyStressRules"])
-        
+        lemma: () => this.napa,
+        /*
+        ergative-absolutive alignment is chiefly used in the imperial dialects of the language.
+        the templars' simplification of the forms is considered grammatically incorrect in these dialects.
+        */
+        absolutive: this.transformWith(["toAbsolutive"]),
+        ergative: this.transformWith(["toErgative"]),
+
+        /*
+        in templar dialects, whatever form had the least syllables became the catch-all form of the word.
+        the ergative-absolutive alignment became archaic.
+        */
+        simplified: () => (this.ergative?.length ?? 0) < (this.absolutive?.length ?? 0) ? this.ergative : this.absolutive,
+        /*
+        the imperial dialects usually only use the simple verb,
+        with the ergativity of the argument indicating active or passive voice.
+        sometimes the ergative and absolutive cases of an argument are identical,
+        in which case passive and active forms may be used.
+        */
+        "simple verb": this.transformWith(["toAbsolutive", "toSimpleVerb"]),
+        /*
+        active and passive forms are especially relevant in the templar dialects, especially when pronouns are dropped.
+        speakers may sometimes use the simple verb with enough context.
+        */
+        "active verb": this.transformWith(["toAbsolutive", "toActiveVoice", "toSimpleVerb"]),
+        "passive verb": this.transformWith(["toAbsolutive", "toPassiveVoice", "toSimpleVerb"]),
+        "passive infinitive": this.transformWith(["toAbsolutive", "toPassiveInfinitive"]),
+        "active infinitive": this.transformWith(["toAbsolutive", null, "toActiveVoice"]),
+        "construct state": this.transformWith(["toErgative", null, "toConstructState"]),
+        "agent": this.transformWith(["toAbsolutive", "toAgent"])
     }
     get forms() {
-        const forms: {[key: string]: string[]|null} = {}
+        const forms: { [key: string]: string | null } = {}
         for (const key of Object.keys(this._forms)) {
-            forms[key] = this._forms[key as keyof typeof this._forms]()
+            forms[key] = Word.print(this._forms[key as keyof typeof this._forms]())
         }
         return forms
     }
-    get neutral() { return this._forms.neutral() }
-    get accusative() { return this._forms.accusative() }
+    get ergative() { return this._forms.ergative() }
+    get absolutive() { return this._forms.absolutive() }
+    indefinite = () => this.suffix("ne")
+    plural = () => this.suffix("re")
+    suffix = (suffix: Nanapa | Napa) => {
+        if (this.kinapa) this.kinapa[1] = [this.kinapa[1], (Array.isArray(suffix) ? suffix : [suffix])]
+        else this.kinapa = [this.kinapa, (Array.isArray(suffix) ? suffix : [suffix])]
+        return this
+    }
+    prefix = (prefix: Nanapa | Napa) => {
+        if (this.kinapa) this.kinapa[1] = [(Array.isArray(prefix) ? prefix : [prefix]), this.kinapa[1]]
+        else this.kinapa = [(Array.isArray(prefix) ? prefix : [prefix]), this.kinapa]
+        return this
+    }
+    get = (key: string) => Word.print(this._forms[key as keyof typeof this._forms]())
 }
+
+const word = new Word(["hu", "me"])
+console.log(word.forms)

@@ -12,7 +12,7 @@ import { Svg } from "@svgdotjs/svg.js";
 import { Character, Dan, Fale, FaleOptions, Moja } from "./fale.ts";
 import Defaults from './defaults.json' with {type: 'json'}
 import sharp from "sharp";
-import { Kinapa, Napa } from "./napa.mts";
+import { Word, Napa } from "./napa.mts";
 
 const window = createSVGWindow()
 const document = window.document
@@ -230,8 +230,8 @@ const router = new Router()
     })
     .post('/napa', async (ctx, next) => {
         const { napa } = ctx.request.body as unknown as {napa: Napa}
-        const kinapa = new Kinapa(napa)
-        ctx.body = kinapa.forms
+        const word = new Word(napa)
+        ctx.body = word.forms
         await next();
     })
 
