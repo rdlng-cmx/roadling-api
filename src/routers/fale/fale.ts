@@ -37,7 +37,8 @@ interface ConsonantData extends GlyphData<string> {
         open?: string
         "hook-top"?: string
         "hook-bottom"?: string
-    }
+    },
+    spacing?: Partial<Record<Consonant, [number, number]>>
 }
 interface DiacriticData extends GlyphData<`diacritic-${Diacritic}`> {
     space?: [number, number]
@@ -142,7 +143,10 @@ export class Fale extends Character {
                     "hook-top": "g-top"
                 },
                 except: [
-                ]
+                ],
+                spacing: {
+                    "k": [-1, -1]
+                }
             }],
             ["old", {
                 glyph: "g-top",
@@ -150,6 +154,9 @@ export class Fale extends Character {
                 alts: {
                     "hook-bottom": "g",
                     "open": "g"
+                },
+                spacing: {
+                    "k": [-1, -1]
                 }
             }]]),
             r: new Map([
@@ -551,10 +558,13 @@ export class Fale extends Character {
             return { element: this.grab("diacritic-" + glyph), ...this.getData("diacritics", glyph) }
         }) as [DiacriticGlyph | undefined, DiacriticGlyph | undefined]
         this.vowel = { element: this.grab(nucleus), ...this.getData<Vowel>("vowels", nucleus) }
-        this.consonants = [onset, coda].map(_glyph => {
+        this.consonants = [onset, coda].map((_glyph, index) => {
+            const data = this.getData<Consonant>("consonants", _glyph) as ConsonantData
+            if (index === 0) this.onsetAlt = data; else this.codaAlt = data
+
             if (!_glyph) return undefined;
-            const glyph = this.getData<Consonant>("consonants", _glyph).glyph!
-            console.log(glyph)
+            const glyph = data.glyph!
+            
             return { element: this.grab(glyph), ...this.getData("consonants", _glyph) }
         }) as [ConsonantGlyph | undefined, ConsonantGlyph | undefined]
     }
@@ -586,20 +596,28 @@ export class Fale extends Character {
     public get attributes() {
         return Fale.analyze(this._syllable)
     }
-
     get onset() { return this.consonants[0] }
-    get onsetGlyph() { return this.onset!.element }
-    set onsetGlyph(element: Element) { this.onset!.element = this.onset!.element.replace(element) }
+    get onsetGlyph(): Element { return this.onset!.element }
+    set onsetGlyph(glyph: string) {
+        const element = this.grab(glyph)
+        if (this.onsetAlt) this.onsetAlt.glyph = glyph
+        this.onset!.element = this.onset!.element.replace(element)
+    }
 
     get coda() { return this.consonants[1] }
-    get codaGlyph() { return this.coda!.element }
-    set codaGlyph(element: Element) { this.coda!.element = this.coda!.element.replace(element) }
+    get codaGlyph(): Element { return this.coda!.element }
+    set codaGlyph(glyph: string) { 
+        const element = this.grab(glyph)
+        if (this.codaAlt) this.codaAlt.glyph = glyph
+        this.coda!.element = this.coda!.element.replace(element)
+    }
 
     get extension(): [number, number] { const [onset, coda] = this.consonants; return [onset?.extend?.[0] ?? 0, coda?.extend?.[1] ?? 0] }
-
+    onsetAlt?: ConsonantData
+    codaAlt?: ConsonantData
 
     // constructor
-    constructor(target: G, private _syllable: string, private options: FaleOptions = {
+    constructor(target: G, private _syllable: string, public readonly options: FaleOptions = {
         flip: false,
         opens: true,
         girth: 1
@@ -652,7 +670,7 @@ export class Fale extends Character {
         const extension: [number, number] = (except as unknown as {
             extend?: [number, number]
         })?.extend ?? this.extension
-        if (except?.use) this.onsetGlyph = this.grab(except.use)
+        if (except?.use) this.onsetGlyph = except.use
 
         const goBy = except ?? onset
         console.log(goBy)
@@ -664,11 +682,11 @@ export class Fale extends Character {
             const codaHookAlt = "hook-" + onset.hook as "hook-top" | "hook-bottom"
             const onsetHookAlt = "hook-" + coda.hook as "hook-top" | "hook-bottom"
             if (coda.alts?.[codaHookAlt]) {
-                this.codaGlyph = this.grab(coda.alts[codaHookAlt])
+                this.codaGlyph = coda.alts[codaHookAlt]
                 hook = onset.hook as "top" | "bottom"
             }
             else if (onset.alts?.[onsetHookAlt]) {
-                this.onsetGlyph = this.grab(onset.alts[onsetHookAlt])
+                this.onsetGlyph = onset.alts[onsetHookAlt]
                 hook = coda.hook as "top" | "bottom"
             }
         }
@@ -689,7 +707,7 @@ export class Fale extends Character {
         const onset = this.consonants[0]!
         const { element, hook, except } = onset
         const exceptOpen = except?.find(data => data.glyph === "open")
-        if (exceptOpen && exceptOpen.use) this.onsetGlyph = this.grab(exceptOpen.use)
+        if (exceptOpen && exceptOpen.use) this.onsetGlyph = exceptOpen.use
         if (!hook) return;
         const y = (hook === true ? "bottom" : hook)
         const [_, diacritic2] = this.diacritics
@@ -705,7 +723,7 @@ export class Fale extends Character {
     }
     private readonly writeOpenSyllable = () => {
         const onset = this.consonants[0]!
-        if (onset.alts?.open) this.onsetGlyph = this.grab(onset.alts.open)
+        if (onset.alts?.open) this.onsetGlyph = onset.alts.open
         if (this.options.flip) this.onsetGlyph.flip('x')
     }
     private readonly writeExtension = (elements: [Element, Element], y: "top" | "bottom" = "top", extension: [number, number] = this.extension) => {
@@ -739,9 +757,18 @@ export class Fale extends Character {
 }
 
 export class Moja extends Character {
+    static data = {
+        "loa": {
+            spacing: [1, 1]
+        },
+        "connector": {
+            spacing: [0.5, 0.5]
+        }
+    }
     prefix = "moja"
     static validate = (syllable: string) => /!(?<moja>.+)/.exec(syllable)
-    constructor(target: G, _moja: string) {
+    public get name() { return this._moja.slice(1) as keyof typeof Moja.data }
+    constructor(target: G, private _moja: string) {
         super(target)
         const groups = Moja.validate(_moja)?.groups
         if (!groups || !groups.moja) return;

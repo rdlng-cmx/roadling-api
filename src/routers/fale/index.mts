@@ -9,7 +9,7 @@ import { G } from "@svgdotjs/svg.js";
 import { parse, structure, validateSyllable } from "./structure.mts";
 import { Element } from "@svgdotjs/svg.js";
 import { Svg } from "@svgdotjs/svg.js";
-import { Character, Dan, Fale, FaleOptions, Moja } from "./fale.ts";
+import { Character, Consonant, Dan, Fale, FaleOptions, Moja } from "./fale.ts";
 import Defaults from './defaults.json' with {type: 'json'}
 import sharp from "sharp";
 import { Word, Napa } from "./napa.mts";
@@ -81,7 +81,7 @@ class Text implements Iterator<[number, number]> {
     constructor(private svg: Svg, private options: {
         stroke?: string
         girth?: number
-        margin?: number
+        margin?: number,
     }) {
         this.group = this.svg.group().stroke({
             color: options.stroke ?? "#fff",
@@ -108,9 +108,22 @@ class Text implements Iterator<[number, number]> {
             && this.currentLine.words.length > 0) {
             extraSpace = this.options.girth ?? 1
         }
+        if (character instanceof Fale && character.onset?.glyph && this.currentLine.words[0] instanceof Fale && (this.currentLine.words[0].onset?.glyph || this.currentLine.words[0].coda?.glyph)) {
+            const thisGlyph = character.onset.glyph
+            const lastGlyphData = this.currentLine.words[0].codaAlt ?? this.currentLine.words[0].onsetAlt
+            if (lastGlyphData && lastGlyphData.spacing) {
+                console.log(thisGlyph)
+                extraSpace = lastGlyphData.spacing[thisGlyph as Consonant]?.[0] ?? 0
+            }
+        }
         console.log(this.currentLine.words)
-        if (character instanceof Moja || this.currentLine.words[0] instanceof Moja) {
-            extraSpace = (this.options.girth ?? 1) * 2
+        if (character instanceof Moja) {
+            const moja = character as Moja
+            extraSpace = (this.options.girth ?? 1) * (Moja.data[moja.name]?.spacing[0] ?? 0)
+        }
+        if (this.currentLine.words[0] instanceof Moja) {
+            const moja = this.currentLine.words[0] as Moja
+            extraSpace = (this.options.girth ?? 1) * (Moja.data[moja.name]?.spacing[1] ?? 0)
         }
         character.character.move(this._x + extraSpace, 0)
 
