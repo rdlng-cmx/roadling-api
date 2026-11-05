@@ -13,6 +13,7 @@ import { Character, Consonant, Dan, Fale, FaleOptions, Moja } from "./fale.ts";
 import Defaults from './defaults.json' with {type: 'json'}
 import sharp from "sharp";
 import { Word, Napa } from "./napa.mts";
+import { Canvas } from "skia-canvas"
 
 const window = createSVGWindow()
 const document = window.document
@@ -29,6 +30,7 @@ type Sometimes = boolean | "sometimes"
 interface Body {
     syllables: string[],
     options: {
+        spacing: number,
         stroke?: string,
         opens?: Sometimes,
         vowels?: Sometimes,
@@ -82,6 +84,7 @@ class Text implements Iterator<[number, number]> {
         stroke?: string
         girth?: number
         margin?: number,
+        spacing?: number
     }) {
         this.group = this.svg.group().stroke({
             color: options.stroke ?? "#fff",
@@ -90,7 +93,7 @@ class Text implements Iterator<[number, number]> {
             linejoin: "round"
         })
     }
-    dan = (num: string) => {
+    dan = (num: `${number}`) => {
         return new Dan(this.group, num)
     }
     fale = (syllable: string, options?: FaleOptions) => {
@@ -100,23 +103,24 @@ class Text implements Iterator<[number, number]> {
         return new Moja(this.group, moja)
     }
     next(character: Character): IteratorResult<[number, number]> {
-        if (!this.currentLine || this.currentLine.done) this.currentLine = new Line((this.options.girth ?? 1) + .5)
+        if (!this.currentLine || this.currentLine.done) this.currentLine = new Line((this.options.girth ?? 1) + (this.options.spacing ?? 0.5))
         let extraSpace = 0
         if (character instanceof Fale
             && character.diacritics[0]
             && !(character.attributes.has("inflector") && character.attributes.has("closed")) 
             && this.currentLine.words.length > 0) {
-            extraSpace = this.options.girth ?? 1
+            //extraSpace = this.options.girth ?? 1
         }
         if (character instanceof Fale && character.onset?.glyph && this.currentLine.words[0] instanceof Fale && (this.currentLine.words[0].onset?.glyph || this.currentLine.words[0].coda?.glyph)) {
             const thisGlyph = character.onset.glyph
-            const lastGlyphData = this.currentLine.words[0].codaAlt ?? this.currentLine.words[0].onsetAlt
-            if (lastGlyphData && lastGlyphData.spacing) {
-                console.log(thisGlyph)
-                extraSpace = lastGlyphData.spacing[thisGlyph as Consonant]?.[0] ?? 0
-            }
+            let lastGlyphData
+            let isCoda: boolean = false
+            if (this.currentLine.words[0].codaAlt?.glyph)
+                (lastGlyphData = this.currentLine.words[0].codaAlt) && (isCoda = true)
+            else lastGlyphData = this.currentLine.words[0].onsetAlt
+            if (lastGlyphData && lastGlyphData.spacing && !this.currentLine.words[0].diacritics[1])
+                extraSpace = lastGlyphData.spacing[thisGlyph as Consonant]?.[isCoda ? 1 : 0] ?? 0
         }
-        console.log(this.currentLine.words)
         if (character instanceof Moja) {
             const moja = character as Moja
             extraSpace = (this.options.girth ?? 1) * (Moja.data[moja.name]?.spacing[0] ?? 0)
@@ -185,6 +189,7 @@ const router = new Router()
         const defaults = Defaults as unknown as Required<Body["options"]>
         const { syllables, options } = ctx.request.body as Body
         const {
+            spacing = defaults.spacing,
             alts = defaults.alts,
             bang = defaults.bang,
             stroke = defaults.stroke,
@@ -197,53 +202,66 @@ const router = new Router()
             crisp = defaults.crisp } = options ?? defaults
         const text = new Text(content, {
             girth,
-            stroke
+            stroke,
+            spacing
         })
         let stress = Infinity
         const faleOptions: FaleOptions = {
             girth,
+            spacing,
             opens: opens === true || (opens === "sometimes" && syllables.length === 1),
             vowel: (vowels === "sometimes" ? undefined : vowels) ?? undefined,
             alts
         }
         if (bang) text.next(text.moja("!bang-onset"))
+        let newWord = true
         for (const [index, syllable] of syllables.entries()) {
             const characterClass: keyof Text = Fale.validate(syllable) ? "fale" : Moja.validate(syllable) ? "moja" : "dan"
             if (characterClass === "fale") {
-                faleOptions.flip = index === syllables.length - 1 || (index > stress && !syllable.includes('*'))
+                faleOptions.flip = (syllables.length > 1 && index === syllables.length - 1) || (index > stress && !syllable.includes('*') && !newWord)
                 const fale = text.fale(syllable, faleOptions)
                 if (fale.attributes.has("invalid")) continue;
                 if (fale.attributes.has("stress")) stress = index
                 text.next(fale)
+                newWord = false
             }
             if (characterClass === "moja") {
                 text.next(text.moja(syllable))
+                newWord = true
             }
             if (characterClass === "dan") {
                 console.log(syllable)
-                text.next(text.dan(syllable))
+                text.next(text.dan(syllable as `${number}`))
+                
             }
         }
         if (bang) text.next(text.moja("!bang"))
+            
         if (jitter) content.filterWith(add => {
             const { baseFrequency = defaults.jitter.baseFrequency, numOctaves = defaults.jitter.numOctaves, seed = defaults.jitter.numOctaves, scale = defaults.jitter.scale } = jitter
             const turbulence = add.turbulence(baseFrequency, numOctaves, seed, 'noStitch', 'turbulence')
             add.displacementMap(add.$source, turbulence, scale, 'R', 'G')
+            add.x("-50%")
+            add.y("-50%")
+            add.width("200%")
+            add.height("200%")
         })
         const { x, y, width: contentWidth, height: contentHeight } = content.group().add(text.group).bbox()
         content.viewbox({ x: x - girth / 2, y: y - girth / 2, width: contentWidth + girth * 2, height: contentHeight + girth })
+        console.log(content.viewbox())
         content.attr("height", height)
         content.attr("preserveAspectRatio", "xMinYMin meet")
         if (crisp) content.attr("shape-rendering", "crispEdges")
-        const file = format === "svg" ? content.svg() : await sharp(Buffer.from(content.svg()))
-        [format]().toBuffer()
+        const buffer = Buffer.from(content.svg())
+        const file = format === "svg" ? content.svg() : await sharp(buffer).png().toBuffer()
         ctx.body = file
         ctx.set("Content-Type", "image/" + format)
         await next()
     })
     .post('/napa', async (ctx, next) => {
-        const { napa } = ctx.request.body as unknown as {napa: Napa}
+        const { napa, suffix } = ctx.request.body as unknown as {napa: Napa, suffix: Napa}
         const word = new Word(napa)
+        if (suffix) word.suffix(suffix)
         ctx.body = word.forms
         await next();
     })

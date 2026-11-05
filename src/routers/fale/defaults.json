@@ -13,5 +13,6 @@
     "vowels": "sometimes",
     "crisp": true,
     "bang": false,
-    "alts": {}
+    "alts": {},
+    "spacing": 0.5
 }
