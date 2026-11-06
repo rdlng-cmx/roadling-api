@@ -431,6 +431,8 @@ export class Fale extends Character {
                 ["", { glyph: "null" }],
                 ["old", { glyph: "null-old" }]
             ]),
+            "y-null": { glyph: "y-null" },
+            "w-null": { glyph: "w-null" },
             "open-bottom": new Map([
                 ["", { glyph: "open-bottom" }],
                 ["old", { glyph: "open-bottom-old" }]
@@ -482,26 +484,28 @@ export class Fale extends Character {
         },
 
     }
-    static readonly validSyllables: { [key: string]: Set<SyllableAttribute> } = {
-        "!": new Set(["punctuation"]),
-        ".CV": new Set([]),
-        ".CGV": new Set([]),
-        ".CVG": new Set([]),
-        "-V": new Set([]),
-        "-GV": new Set([]),
-        "-VG": new Set([]),
-        "-VC": new Set([]),
-        "-GVC": new Set([]),
-        "-VGC": new Set([]),
-        "*CV": new Set([]),
-        "*CGV": new Set([]),
-        "*CVG": new Set([]),
-        "*CVC": new Set([]),
-        "*CGVC": new Set([]),
-        "*CVGC": new Set([]),
-        "*CGVG": new Set([]),
-        "*CGVGC": new Set([])
-    }
+    static readonly validSyllables: Set<string> = new Set([
+        "!",
+        ".CV",
+        ".CGV",
+        ".CVG",
+        "-N",
+        "-GV",
+        "-VG",
+        "-VC",
+        "-NC",
+        "-GVC",
+        "-VGC",
+        "*CV",
+        "*CGV",
+        "*CVG",
+        "*CVC",
+        "*CGVC",
+        "*CVGC",
+        "*CGVG",
+        "*CGVGC"
+    ])
+        
     static readonly consonants = [
         "p", "b",
         "t", "d",
@@ -533,7 +537,7 @@ export class Fale extends Character {
         "open-top-diacritic-w",
         "open-bottom-diacritic-w"
     ]
-    static readonly validate = (syllable: string) => new RegExp(`^(?<mark>${Fale.marks.map(mark => '\\' + mark).join("|")})(?<onset>${Fale.consonants.join("|")})?(?<diacritic1>${Fale.diacritics.join("|")})?(?<nucleus>${Fale.vowels.join("|")})(?<diacritic2>${Fale.diacritics.join("|")})?(?<coda>${Fale.consonants.join("|")})?$`).exec(syllable)
+    static readonly validate = (syllable: string) => new RegExp(`^(?<mark>${Fale.marks.map(mark => '\\' + mark).join("|")})(?<onset>${Fale.consonants.join("|")})?(?<diacritic1>${Fale.diacritics.join("|")})?(?<nucleus>${["\_", ...Fale.vowels].join("|")})(?<diacritic2>${Fale.diacritics.join("|")})?(?<coda>${Fale.consonants.join("|")})?$`).exec(syllable)
     static readonly parse = (syllable: string) => {
         const regex = Fale.validate(syllable)
         if (!regex?.groups) return "";
@@ -543,6 +547,7 @@ export class Fale extends Character {
         return realSyll
             .split("|")
             .map(char => {
+                if (char === "_") return "N"
                 if (Fale.diacritics.includes(char as Diacritic)) return "G"
                 if (Fale.marks.includes(char as Mark)) return char
                 if (Fale.consonants.includes(char as Consonant)) return "C"
@@ -552,11 +557,13 @@ export class Fale extends Character {
     }
     static readonly analyze = (syllable: string) => {
         const parsedSyllable = Fale.parse(syllable)
-        const analysis = Fale.validSyllables[parsedSyllable]
+        const analysis = Fale.validSyllables.has(parsedSyllable) ? new Set() : null
         if (!analysis) return new Set(["invalid"])
+        if (syllable[0] === "!") analysis.add("punctuation")
         if (syllable[0] === "*") analysis.add("stress")
         if (syllable[0] === "^") analysis.add("secondary")
         if (syllable[0] === "-") analysis.add("inflector")
+        if (syllable.includes("N")) analysis.add("nullish")
         if (parsedSyllable.slice(-1) === "C") analysis.add("closed")
         return analysis
     }
@@ -654,7 +661,8 @@ export class Fale extends Character {
 
     //writing methods
     private readonly writeOpenInflector = () => {
-        const nullData = this.getData("punctuation", "null")
+        const whichNull = this.diacritics[0]?.glyph === "diacritic-y" ? "y-null" : this.diacritics[0]?.glyph === "diacritic-w" ? "w-null" : "null"
+        const nullData =  this.getData("punctuation", whichNull)
         const nullGlyph = this.grab(nullData.glyph!)
         if (this.options.flip) nullGlyph.flip('x')
         this.writeDiacritics([nullGlyph])

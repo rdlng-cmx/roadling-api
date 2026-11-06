@@ -75,7 +75,8 @@ export class Word {
                 let secondSyllable = form.at(1)
                 let lastSyllable = form.at(-1)
                 let secondToLastSyllable = form.at(-2)
-                const firstVowel = Fale.vowels.includes(secondSyllable?.[1] as Vowel) ? secondSyllable?.[1] as string : firstSyllable?.at(-1)
+                const firstVowel = Fale.vowels.includes(secondSyllable?.[1] as Vowel) ? secondSyllable?.[1] as string :
+                secondSyllable?.[1] === "w" || secondSyllable?.[1] === "y" ? secondSyllable?.[1] as string : firstSyllable?.at(-1) as string
                 const lastVowel = lastSyllable?.at(-1)
                 const clipReqs = [
                     lastVowel === "e" || (lastVowel === "i" && firstVowel !== "i") || (lastVowel === "u"  && firstVowel !== "u"),
